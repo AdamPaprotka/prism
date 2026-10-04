@@ -109,6 +109,7 @@ public final class ModuleRegistry {
             new dev.prismglass.module.world.AutoShearer(),
             new dev.prismglass.module.world.EChestFarmer(),
             new dev.prismglass.module.world.Nuker(),
+            new dev.prismglass.module.world.HighwayBuilder(),
             new dev.prismglass.module.world.StashFinder(),
             new dev.prismglass.module.world.Timer()
         );

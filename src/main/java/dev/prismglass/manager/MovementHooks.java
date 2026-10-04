@@ -89,6 +89,14 @@ public final class MovementHooks {
             input.moveVector = vector(input.keyPresses);
         }
 
+        var highway = Prism.modules().get(dev.prismglass.module.world.HighwayBuilder.class);
+        if (highway != null && highway.wantsForward()) {
+            Input p = input.keyPresses;
+            float strafe = highway.wantsStrafe();
+            input.keyPresses = new Input(true, false, p.left() || strafe > 0, p.right() || strafe < 0, p.jump(), p.shift(), p.sprint());
+            input.moveVector = vector(input.keyPresses);
+        }
+
         applyLegitInputs(input);
         if (Prism.invGuard().holdingStill()) {
             // an inventory click is queued: stand still for it (Grim MultiActionsC)

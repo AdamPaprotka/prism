@@ -23,6 +23,7 @@
     "KeyboardInputMixin",
     "KeyboardMixin",
     "LivingEntityMixin",
+    "FireworkRocketEntityMixin",
     "LivingEntityRendererMixin",
     "MinecraftClientMixin",
     "MouseMixin",

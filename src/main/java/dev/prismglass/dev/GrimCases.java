@@ -184,6 +184,35 @@ final class GrimCases {
         });
         String[] stone = {"item replace entity @s hotbar.0 with stone 64"};
         String[] supported = {"item replace entity @s hotbar.0 with stone 64", "setblock 0 -58 4 stone"};
+        // ---- elytra: start high, glide, climb, dive, hold ----
+        String[] sky = {"tp @s 0 100 0 0 0", "item replace entity @s armor.chest with elytra", "item replace entity @s hotbar.1 with firework_rocket 64"};
+        IntConsumer elytraLog = t -> {
+            if (t % 20 == 0) GrimTest.log(String.format("info ely t=%d y %.1f speed %.2f gliding %s pitch %.1f", t, mc.player.getY(),
+                mc.player.getDeltaMovement().length(), mc.player.isFallFlying(), Prism.rotations().getServerPitch()));
+        };
+        add(cases, "elytra-vanilla", 160, sky, () -> {}, t -> {
+            // plain elytra: open it when falling (jump release -> press), look straight ahead
+            mc.player.setXRot(5);
+            GrimTest.hold(jump(), t > 6 && t % 2 == 0 && !mc.player.isFallFlying());
+            elytraLog.accept(t);
+        });
+        add(cases, "elytra-grim", 200, sky, () -> on(dev.prismglass.module.movement.ElytraFly.class).mode.parse("Grim"), t -> {
+            mc.player.setXRot(50); // camera looks down: the module flies on its own pitch
+            GrimTest.hold(jump(), t > 70 && t <= 100);       // climb
+            GrimTest.hold(mc.options.keyShift, t > 120 && t <= 140); // dive
+            elytraLog.accept(t);
+        });
+        // ---- HighwayBuilder: wall to dig through, floor hole to pave, water to block off ----
+        String[] course = {"fill -3 -60 4 3 -58 6 stone", "fill -1 -63 9 1 -61 11 air", "setblock 0 -60 14 water",
+            "item replace entity @s hotbar.0 with netherite_pickaxe[enchantments={efficiency:5}]", "item replace entity @s hotbar.1 with obsidian 64"};
+        add(cases, "highway", 400, course, () -> {
+            var hb = Prism.modules().get(dev.prismglass.module.world.HighwayBuilder.class);
+            hb.width.set(3.0); hb.height.set(3.0); hb.floor.parse("Obsidian"); hb.rails.set(true); hb.walk.set(true);
+            hb.setEnabled(true);
+        }, t -> {
+            if (t % 40 == 0) GrimTest.log(String.format("info hw t=%d z %.2f x %.2f y %.2f %s", t, mc.player.getZ(), mc.player.getX(), mc.player.getY(),
+                Prism.modules().get(dev.prismglass.module.world.HighwayBuilder.class).getInfo()));
+        });
         // ---- combat: a NoAI zombie that can't be knocked away ----
         String zombie = "summon zombie 0 -60 3.5 {NoAI:1b,PersistenceRequired:1b,Health:1000f,attributes:[{id:\"minecraft:max_health\",base:1000},{id:\"minecraft:knockback_resistance\",base:1}]}";
         String[] arena = {zombie, "item replace entity @s hotbar.0 with diamond_sword"};

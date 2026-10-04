@@ -67,6 +67,9 @@ public final class RotationManager {
             return;
         }
 
+        // an item was used this tick with the rotation the server already has: keep it for this tick's movement
+        // packet too (Grim BadPacketsJ: use-item rotation must equal the tick's rotation)
+        if (Prism.guard().hasUsed()) return;
         if (holdTicks > 0) holdTicks--;
         else if (!returning) { returning = true; priority = Integer.MIN_VALUE; }
 
@@ -156,6 +159,17 @@ public final class RotationManager {
     public boolean isActive() { return active; }
     /** Yaw used for movement this tick (server yaw when rotating, camera otherwise). */
     public float getMoveYaw() { return active ? yaw : mc.player.getYRot(); }
+    public float getMovePitch() { return active ? pitch : mc.player.getXRot(); }
+
+    /**
+     * Elytra flight and firework boosts follow where the server thinks we look. While a silent rotation is active
+     * (and the move fix is on) our own physics must use it too, or Grim's prediction disagrees.
+     */
+    public boolean silentLookFor(net.minecraft.world.entity.Entity e) {
+        return active && e == mc.player && !Prism.anticheat().moveFix.is("Off");
+    }
+
+    public net.minecraft.world.phys.Vec3 silentLook() { return dev.prismglass.util.RotationUtil.direction(yaw, pitch); }
     public float getServerYaw() { return serverYaw; }
     public float getServerPitch() { return serverPitch; }
     public float getYaw() { return yaw; }
@@ -170,7 +184,8 @@ public final class RotationManager {
         if (!Prism.anticheat().strictRaycast.get()) return true;
         Vec3 eye = mc.player.getEyePosition();
         if (box.contains(eye)) return true;
-        Vec3 end = eye.add(RotationUtil.direction(serverYaw, serverPitch).scale(range + 2.0));
+        // never longer than the server's own block reach: Grim's RotationPlace casts exactly that far
+        Vec3 end = eye.add(RotationUtil.direction(serverYaw, serverPitch).scale(Math.min(range + 2.0, serverReach())));
         return box.clip(eye, end).isPresent();
     }
 
@@ -185,6 +200,11 @@ public final class RotationManager {
         if (box.contains(eye)) return 0;
         Vec3 end = eye.add(RotationUtil.direction(serverYaw, serverPitch).scale(maxRange + 3));
         return box.clip(eye, end).map(eye::distanceTo).orElse(-1.0);
+    }
+
+    /** The block reach the server uses (the attribute itself, not our Reach module's client value). */
+    public double serverReach() {
+        return mc.player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.BLOCK_INTERACTION_RANGE);
     }
 
     /** Does the server rotation look at this block (for strict placing)? */

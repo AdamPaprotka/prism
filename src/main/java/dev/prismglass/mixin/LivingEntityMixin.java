@@ -49,4 +49,17 @@ public abstract class LivingEntityMixin {
         float yaw = original.call(self);
         return prism$isSelf() ? MovementHooks.velocityYaw(yaw) : yaw;
     }
+
+    /** Elytra physics with the silent rotation (see RotationManager#silentLookFor). */
+    @WrapOperation(method = "updateFallFlyingMovement", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/world/entity/LivingEntity;getLookAngle()Lnet/minecraft/world/phys/Vec3;"))
+    private net.minecraft.world.phys.Vec3 prism$elytraLook(LivingEntity self, Operation<net.minecraft.world.phys.Vec3> original) {
+        return Prism.rotations() != null && Prism.rotations().silentLookFor(self) ? Prism.rotations().silentLook() : original.call(self);
+    }
+
+    @WrapOperation(method = "updateFallFlyingMovement", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/world/entity/LivingEntity;getXRot()F"))
+    private float prism$elytraPitch(LivingEntity self, Operation<Float> original) {
+        return Prism.rotations() != null && Prism.rotations().silentLookFor(self) ? Prism.rotations().getMovePitch() : original.call(self);
+    }
 }

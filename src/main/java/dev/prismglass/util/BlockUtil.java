@@ -123,6 +123,7 @@ public final class BlockUtil {
         Vec3 aim = Vec3.atCenterOf(pos);
         Direction face = breakFace(pos);
         if (face != null) aim = aim.add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(0.45));
+        if (Prism.anticheat().strictRaycast.get() && mc.player.getEyePosition().distanceTo(aim) > Prism.rotations().serverReach() - 0.05) return false;
         float[] rot = RotationUtil.toward(aim);
         Prism.rotations().request(rot[0], rot[1], priority);
         double range = Prism.anticheat().placeRange.get();
@@ -164,6 +165,10 @@ public final class BlockUtil {
             return Result.FAILED;
         }
 
+        // the look ray to the clicked point must fit in the server's reach (Grim RotationPlace casts exactly that far)
+        if (ac.strictRaycast.get() && mc.player.getEyePosition().distanceTo(hit.getLocation()) > Prism.rotations().serverReach() - 0.05) {
+            return Result.FAILED;
+        }
         float[] rot = RotationUtil.toward(hit.getLocation());
         switch (ac.placeRotate.get()) {
             case "Packet" -> Prism.rotations().sendLook(rot[0], rot[1]);

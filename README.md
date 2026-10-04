@@ -20,10 +20,13 @@ anticheat bypasses tested against real servers running **GrimAC** and **Updated-
 | AirPlace (Grim mode) | ✅ | ✅ |
 | NoJumpDelay | ✅ | ✅ |
 | KillAura, Criticals (Legit) | - | ✅ |
+| ElytraFly (Grim mode) | ✅ | - |
+| HighwayBuilder | ✅ | - |
 
 - **Finders:** seed-based StructureFinder and ElytraFinder (end ships + the exact elytra), Xray with seed ore simulation.
 - **PearlPredict + AutoPearl:** shows where every pearl lands; AutoPearl follows enemies who pearl away (about 1 block off on average).
-- **ElytraBot:** autopilot to coordinates with safe landings.
+- **ElytraBot:** autopilot to coordinates with safe landings. **ElytraFly (Grim mode):** manual flight with height hold and auto rockets.
+- **HighwayBuilder:** digs, paves (obsidian/netherrack), blocks liquids, adds guardrails and walks the highway.
 
 See [CHANGELOG.md](CHANGELOG.md) for everything, or open it in game (ClickGUI → Config → Changelog).
 

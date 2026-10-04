@@ -1,5 +1,19 @@
 # Prism Glass changelog
 
+## 1.3.0 - 2026-10-04
+
+### New
+- HighwayBuilder (World): builds a highway in the compass direction you face (8 directions, diagonals included). Digs a Width x Height tunnel with your best tool, paves missing floor (Obsidian / Netherrack / any block), blocks off lava and water, adds guardrails, and walks along once the next stretch is done. One action per tick at vanilla speed: tested on Grim, 0 flags (27-block wall, floor hole and water on the way).
+- ElytraFly: new Grim mode (default). Your camera steers left/right; the module flies the pitch: Space climbs, Shift dives, neither holds your height, and rockets fire when you get slow. It only ever changes your look (a silent rotation, so your camera stays free) and uses real rockets: tested on Grim, 0 flags.
+
+### Fixes
+- Elytra flight and firework boosts use the silent rotation in your own physics too, so any rotating module (KillAura, AutoPearl...) no longer desyncs from Grim while you glide.
+- Using an item (pearl, rocket...) keeps the silent rotation still for that tick (Grim BadPacketsJ).
+- Placing and digging only aim at blocks the server's real 4.5 reach can ray to (Grim RotationPlace near max range).
+
+### Project
+- GitHub Actions: every push builds the jar (Actions > Artifacts); pushing a tag like v1.3.0 publishes a Release with the jar attached.
+
 ## 1.2.0 - 2026-10-04
 
 ### NoCheatPlus (tested on Updated-NCP 3.17.1 b279, the 2026 build)

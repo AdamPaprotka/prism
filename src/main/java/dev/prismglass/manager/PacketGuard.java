@@ -154,5 +154,7 @@ public final class PacketGuard {
     }
 
     public boolean hasAttacked() { return attacked; }
+    /** A use-item packet already went out this tick. */
+    public boolean hasUsed() { return used; }
     public boolean isAfterFlying() { return afterFlying; }
 }
