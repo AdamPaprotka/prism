@@ -22,7 +22,7 @@ import net.minecraft.world.phys.Vec3;
  * "Control"/"Boost" rewrite your motion directly [Grim-unsafe].
  */
 public class ElytraFly extends Module {
-    public final ModeSetting mode = mode("Mode", "Grim", "Grim = steers only your (silent) look + real rockets, holds height (Grim-safe). Control = no gravity, direct steering. Boost = accelerate along look. [Control/Boost Grim-unsafe]", "Grim", "Control", "Boost");
+    public final ModeSetting mode = mode("Mode", "Grim", "Grim = steers only your (silent) look + real rockets, holds height (Grim-safe). Control = no gravity, direct steering. Boost = accelerate along look. [Control/Boost Grim-unsafe]", "Grim", "Bounce", "Control", "Boost");
     public final NumberSetting speed = num("Speed", 1.8, 0.1, 5, 0.05, "Control/Boost: horizontal speed.").visibleWhen(() -> !mode.is("Grim"));
     public final NumberSetting vSpeed = num("VerticalSpeed", 1.0, 0.1, 3, 0.05, "Control: up/down speed.").visibleWhen(() -> mode.is("Control"));
     public final BoolSetting holdHeight = bool("HoldHeight", true, "Grim: keep your height when you're not climbing or diving.").visibleWhen(() -> mode.is("Grim"));
@@ -31,6 +31,7 @@ public class ElytraFly extends Module {
     public final BoolSetting autoRocket = bool("AutoRocket", true, "Grim: use a firework when you get slow.").visibleWhen(() -> mode.is("Grim"));
     public final NumberSetting minSpeed = num("MinSpeed", 1.2, 0.3, 3, 0.05, "Grim: rocket below this speed (blocks/tick).").visibleWhen(() -> mode.is("Grim") && autoRocket.get());
     public final NumberSetting rocketGap = num("RocketGap", 30, 10, 100, 1, "Grim: ticks at least between rockets.").visibleWhen(() -> mode.is("Grim") && autoRocket.get());
+    public final NumberSetting bouncePitch = num("BouncePitch", 75, 0, 90, 1, "Bounce: the pitch you fly at (tune this: higher = lower, faster bounces).").visibleWhen(() -> mode.is("Bounce"));
     public final BoolSetting autoStart = bool("AutoStart", true, "Open the elytra automatically when falling.");
 
     private double holdY = Double.NaN;
@@ -52,13 +53,28 @@ public class ElytraFly extends Module {
         var p = mc.player;
         ticks++;
         if (restoreSlot != -1) { InvUtil.restore(restoreSlot); restoreSlot = -1; }
-        if (autoStart.get() && !p.isFallFlying() && !p.onGround() && p.getDeltaMovement().y < -0.1
+        if (autoStart.get() && !mode.is("Bounce") && !p.isFallFlying() && !p.onGround() && p.getDeltaMovement().y < -0.1
             && p.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA) && !p.getAbilities().flying
             && !p.input.keyPresses.jump()) {
             // jump release -> press, so vanilla sends START_FALL_FLYING itself (Grim ElytraB-safe)
             dev.prismglass.manager.MovementHooks.requestGlide();
         }
         if (mode.is("Grim")) grim();
+        else if (mode.is("Bounce")) bounce();
+    }
+
+    /**
+     * Highway bounce: sprint-jump, open the elytra right away, land, repeat. Every sprint jump adds speed and the
+     * elytra's drag is tiny, so speed builds up. Pitch is held by a silent rotation (camera stays free), and our
+     * elytra physics use it (LivingEntityMixin) so the client flies what the server sees.
+     */
+    private void bounce() {
+        var p = mc.player;
+        if (!p.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA) || !p.input.keyPresses.forward()) return;
+        if (!p.isSprinting()) p.setSprinting(true);
+        Prism.rotations().request(p.getYRot(), bouncePitch.getFloat(), 80);
+        if (p.onGround()) dev.prismglass.manager.MovementHooks.requestJump();
+        else if (!p.isFallFlying() && !dev.prismglass.manager.MovementHooks.glidePending()) dev.prismglass.manager.MovementHooks.requestGlide();
     }
 
     private void grim() {
@@ -107,7 +123,7 @@ public class ElytraFly extends Module {
     @Override
     public void onMove(MoveEvent e) {
         var p = mc.player;
-        if (!p.isFallFlying() || mode.is("Grim")) return;
+        if (!p.isFallFlying() || mode.is("Grim") || mode.is("Bounce")) return;
         if (mode.is("Control")) {
             double[] d = EntityUtil.directionSpeed(speed.get(), p.getYRot());
             e.setHorizontal(d[0], d[1]);
