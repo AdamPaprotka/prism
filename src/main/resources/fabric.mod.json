@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "prismglass",
+  "version": "${version}",
+  "name": "Prism Glass",
+  "description": "Anarchy PvP utility client with a liquid-glass interface.",
+  "authors": ["Abab"],
+  "license": "MIT",
+  "icon": "assets/prismglass/icon.png",
+  "environment": "client",
+  "entrypoints": { "client": ["dev.prismglass.Prism"] },
+  "mixins": ["prismglass.mixins.json"],
+  "accessWidener": "prismglass.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~26.1.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

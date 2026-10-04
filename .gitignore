@@ -1,0 +1,27 @@
+# Gradle / build output
+.gradle/
+build/
+out/
+bin/
+.buildnumber
+
+# Minecraft dev run folder (worlds, logs, screenshots, server list, configs)
+run/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log

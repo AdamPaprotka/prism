@@ -1,0 +1,37 @@
+{
+  "required": true,
+  "package": "dev.prismglass.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "CameraMixin",
+    "DevHiddenWindowMixin",
+    "ClientConnectionMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "ClientPlayerEntityMixin",
+    "EntityMixin",
+    "EntityRendererMixin",
+    "FluidBlockMixin",
+    "GameRendererMixin",
+    "GlDebugTraceMixin",
+    "GlDeviceMixin",
+    "GuiDrawAccessor",
+    "GuiRenderStateMixin",
+    "GuiRendererMixin",
+    "InGameHudMixin",
+    "InGameOverlayRendererMixin",
+    "InteractionManagerMixin",
+    "KeyboardInputMixin",
+    "KeyboardMixin",
+    "LivingEntityMixin",
+    "LivingEntityRendererMixin",
+    "MinecraftClientMixin",
+    "MouseMixin",
+    "PlayerEntityMixin",
+    "RenderTickCounterMixin",
+    "WindowAccessor",
+    "WindowMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

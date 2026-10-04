@@ -1,0 +1,55 @@
+accessWidener v2 official
+
+# block breaking / hotbar
+accessible method net/minecraft/client/multiplayer/MultiPlayerGameMode ensureHasSentCarriedItem ()V
+accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode destroyDelay I
+accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode destroyProgress F
+accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode destroyBlockPos Lnet/minecraft/core/BlockPos;
+accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode isDestroying Z
+
+# client
+accessible field net/minecraft/client/Minecraft rightClickDelay I
+accessible field net/minecraft/client/Minecraft missTime I
+accessible method net/minecraft/client/Minecraft startAttack ()Z
+accessible method net/minecraft/client/Minecraft startUseItem ()V
+accessible field net/minecraft/client/player/ClientInput moveVector Lnet/minecraft/world/phys/Vec2;
+
+# entities
+accessible field net/minecraft/world/entity/LivingEntity noJumpDelay I
+accessible method net/minecraft/client/Camera setPosition (DDD)V
+accessible method net/minecraft/client/Camera setRotation (FF)V
+
+# packets
+accessible field net/minecraft/network/protocol/game/ServerboundMovePlayerPacket onGround Z
+mutable field net/minecraft/network/protocol/game/ServerboundMovePlayerPacket onGround Z
+accessible field net/minecraft/network/protocol/game/ServerboundMovePlayerPacket y D
+mutable field net/minecraft/network/protocol/game/ServerboundMovePlayerPacket y D
+accessible field net/minecraft/network/protocol/game/ServerboundUseItemPacket yRot F
+mutable field net/minecraft/network/protocol/game/ServerboundUseItemPacket yRot F
+accessible field net/minecraft/network/protocol/game/ServerboundUseItemPacket xRot F
+mutable field net/minecraft/network/protocol/game/ServerboundUseItemPacket xRot F
+accessible field net/minecraft/network/protocol/game/ClientboundSetEntityMotionPacket movement Lnet/minecraft/world/phys/Vec3;
+mutable field net/minecraft/network/protocol/game/ClientboundSetEntityMotionPacket movement Lnet/minecraft/world/phys/Vec3;
+accessible field net/minecraft/network/protocol/game/ClientboundExplodePacket playerKnockback Ljava/util/Optional;
+mutable field net/minecraft/network/protocol/game/ClientboundExplodePacket playerKnockback Ljava/util/Optional;
+
+# structure finder (seed mode): jigsaw start height
+accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure startHeight Lnet/minecraft/world/level/levelgen/heightproviders/HeightProvider;
+accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure projectStartToHeightmap Ljava/util/Optional;
+accessible method net/minecraft/core/Holder$Reference bindTags (Ljava/util/Collection;)V
+accessible method net/minecraft/world/level/chunk/ChunkGeneratorStructureState <init> (Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeSource;JJLjava/util/List;)V
+mutable field net/minecraft/world/level/levelgen/structure/Structure settings Lnet/minecraft/world/level/levelgen/structure/Structure$StructureSettings;
+accessible field net/minecraft/world/level/levelgen/structure/Structure settings Lnet/minecraft/world/level/levelgen/structure/Structure$StructureSettings;
+
+# elytra finder: build end cities client-side with preloaded templates, read the ship's Elytra marker
+accessible field net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager structureRepository Ljava/util/Map;
+mutable field net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager structureRepository Ljava/util/Map;
+accessible field net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager sources Ljava/util/List;
+mutable field net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager sources Ljava/util/List;
+accessible field net/minecraft/world/level/levelgen/structure/TemplateStructurePiece templateName Ljava/lang/String;
+accessible field net/minecraft/world/level/levelgen/structure/TemplateStructurePiece template Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;
+accessible field net/minecraft/world/level/levelgen/structure/TemplateStructurePiece placeSettings Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;
+accessible field net/minecraft/world/level/levelgen/structure/TemplateStructurePiece templatePosition Lnet/minecraft/core/BlockPos;
+
+# walk in ClickGUI: read the bound key of movement key mappings
+accessible field net/minecraft/client/KeyMapping key Lcom/mojang/blaze3d/platform/InputConstants$Key;

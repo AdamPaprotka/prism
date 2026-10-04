@@ -1,0 +1,84 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = "${project.mod_version}+mc${project.minecraft_version}"
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+loom {
+    accessWidenerPath = file("src/main/resources/prismglass.accesswidener")
+    runs {
+        client {
+            if (project.hasProperty('audit')) vmArg '-Dprismglass.audit=true'
+            // automated tests run in an invisible, unfocused window (StreamProof/fullscreen tests need a visible one)
+            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest']
+                    .any { project.hasProperty(it) } && !project.hasProperty('visible')) vmArg '-Dprismglass.hidden=true'
+            if (project.hasProperty('guitest')) vmArg '-Dprismglass.guitest=true'
+            if (project.hasProperty('guiblocky')) vmArg '-Dprismglass.guiblocky=true'
+            if (project.hasProperty('hudtest')) vmArg '-Dprismglass.hudtest=true'
+            if (project.hasProperty('pearltest')) vmArg '-Dprismglass.pearltest=true'
+            if (project.hasProperty('rconcmds')) vmArg '-Dprismglass.rconcmds=true'
+            if (project.hasProperty('acpreset')) vmArg "-Dprismglass.acpreset=${project.property('acpreset')}"
+            if (project.hasProperty('combattest')) vmArg '-Dprismglass.combattest=true'
+            if (project.hasProperty('xraytest')) vmArg '-Dprismglass.xraytest=true'
+            if (project.hasProperty('streamtest')) vmArg '-Dprismglass.streamtest=true'
+            if (project.hasProperty('nosp')) vmArg '-Dprismglass.streamtest.nosp=true'
+            if (project.hasProperty('gltrace')) vmArg '-Dprismglass.gltrace=true'
+            if (project.hasProperty('exactfs')) vmArg '-Dprismglass.exactfs=true'
+            if (project.hasProperty('fstest')) vmArg '-Dprismglass.fstest=true'
+            if (project.hasProperty('structtest')) vmArg '-Dprismglass.structtest=true'
+            if (project.hasProperty('elytratest')) vmArg '-Dprismglass.elytratest=true'
+            if (project.hasProperty('flighttest')) vmArg '-Dprismglass.flighttest=true'
+            if (project.hasProperty('pflytest')) vmArg '-Dprismglass.pflytest=true'
+            if (project.hasProperty('crystaltest')) vmArg '-Dprismglass.crystaltest=true'
+            if (project.hasProperty('elytrabottest')) vmArg '-Dprismglass.elytrabottest=true'
+            if (project.hasProperty('grimtest')) vmArg '-Dprismglass.grimtest=true'
+            if (project.hasProperty('grimcases')) vmArg "-Dprismglass.grimcases=${project.property('grimcases')}"
+            if (project.hasProperty('pflymode')) vmArg "-Dprismglass.pflymode=${project.property('pflymode')}"
+            if (project.hasProperty('mp')) programArgs '--quickPlayMultiplayer', project.property('mp')
+            if (project.hasProperty('preset')) vmArg "-Dprismglass.preset=${project.property('preset')}"
+        }
+    }
+}
+
+// Build stamp for the About screen: version, channel, build number (counts jar builds), time, versions.
+def buildInfoDir = layout.buildDirectory.dir("generated/buildinfo")
+def buildCounter = rootProject.file('.buildnumber')
+def countsBuild = gradle.startParameter.taskNames.any { it in ['build', 'jar', 'remapJar'] }
+def stamp = [version: project.version.toString(), channel: (project.findProperty('release_channel') ?: 'indev').toString(),
+             minecraft: project.minecraft_version, loader: project.loader_version, fabric_api: project.fabric_api_version]
+tasks.register('genBuildInfo') {
+    def out = buildInfoDir.get().file("assets/prismglass/build.properties").asFile
+    outputs.upToDateWhen { false }
+    doLast {
+        int n = buildCounter.exists() ? buildCounter.text.trim().toInteger() : 0
+        if (countsBuild) { n++; buildCounter.text = "${n}" }
+        out.parentFile.mkdirs()
+        def lines = stamp.collect { k, v -> "${k}=${v}".toString() }
+        lines += ["build=${n}", "time=${new Date().format('yyyy-MM-dd HH:mm')}", "jdk=${System.getProperty('java.version')}"].collect { it.toString() }
+        out.text = lines.join(System.lineSeparator()) + System.lineSeparator()
+    }
+}
+sourceSets.main.resources.srcDir(buildInfoDir)
+
+processResources {
+    dependsOn 'genBuildInfo'
+    def version = project.version
+    inputs.property "version", version
+    filesMatching("fabric.mod.json") { expand "version": version }
+    from(rootProject.file('CHANGELOG.md')) { into 'assets/prismglass' } // shown in game (ChangelogScreen)
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25; it.options.encoding = 'UTF-8'; it.options.compilerArgs += ['-Xmaxerrs', '5000'] }
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
