@@ -1,0 +1,46 @@
+# Builds the jar on every push / pull request (download it from the run's "Artifacts").
+# Pushing a tag like v1.3.0 also publishes a GitHub Release with the jar attached, marked as the "release" channel.
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: |
+          chmod +x gradlew
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then CHANNEL=release; else CHANNEL=beta; fi
+          ./gradlew build --no-daemon -Prelease_channel=$CHANNEL
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: prism-glass-build-${{ github.run_number }}
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/*.jar
+          generate_release_notes: true
