@@ -13,6 +13,8 @@ import net.minecraft.world.phys.Vec3;
 /** Detached camera. Your player stays still (no packets change); only the view moves. */
 public class Freecam extends Module {
     public final NumberSetting speed = num("Speed", 1.0, 0.1, 5, 0.1, "Fly speed.");
+    public final BoolSetting forceRender = bool("ForceRender", true, "Turn off chunk occlusion culling while flying, so nothing behind walls or behind your body goes missing.");
+    private boolean savedCull = true, cullChanged;
     private Vec3 pos = Vec3.ZERO, prevPos = Vec3.ZERO;
     private float yaw, pitch;
 
@@ -23,10 +25,19 @@ public class Freecam extends Module {
         pos = prevPos = mc.gameRenderer.getMainCamera().position();
         yaw = mc.player.getYRot();
         pitch = mc.player.getXRot();
+        if (forceRender.get()) {
+            // vanilla hides chunk sections it thinks the camera can't see, flooding out from the camera's section;
+            // a camera inside blocks or far from the player gets that wrong and whole areas vanish
+            savedCull = mc.smartCull;
+            mc.smartCull = false;
+            cullChanged = true;
+            if (mc.levelRenderer != null) mc.levelRenderer.needsUpdate();
+        }
     }
 
     @Override
     public void onDisable() {
+        if (cullChanged) { mc.smartCull = savedCull; cullChanged = false; }
         if (mc.levelRenderer != null) mc.levelRenderer.needsUpdate();
     }
 

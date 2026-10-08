@@ -117,8 +117,13 @@ public final class MovementHooks {
      */
     private static boolean applyChase(ClientInput input) {
         KillAura ka = Prism.modules().get(KillAura.class);
-        if (ka == null || !ka.isEnabled()) return false;
-        net.minecraft.world.phys.Vec3 to = ka.chasePoint();
+        net.minecraft.world.phys.Vec3 to = ka != null && ka.isEnabled() ? ka.chasePoint() : null;
+        if (to == null) {
+            // AutoMace: after a wind charge launch, drift over the target so the smash lands in reach
+            var mace = Prism.modules().get(dev.prismglass.module.combat.AutoMace.class);
+            to = mace != null && mace.isEnabled() ? mace.airChasePoint() : null;
+            ka = null;
+        }
         if (to == null) return false;
         // manual steering wins, except plain W which means "go": then we steer toward the target
         boolean onlyForward = input.getMoveVector().y > 0 && input.getMoveVector().x == 0;
@@ -135,12 +140,13 @@ public final class MovementHooks {
         }
         input.moveVector = new Vec2(bestS, bestF).normalized();
         Input p = input.keyPresses;
-        boolean jump = p.jump() || (ka.walkJump.get() && mc.player.horizontalCollision && mc.player.onGround());
+        boolean jump = p.jump() || (ka != null && ka.walkJump.get() && mc.player.horizontalCollision && mc.player.onGround());
         input.keyPresses = new Input(bestF > 0, bestF < 0, bestS > 0, bestS < 0, jump, p.shift(), p.sprint());
 
         // sprint only where vanilla allows it (forward pressed + every SprintA-G condition)
         var pl = mc.player;
-        if (ka.walkSprint.get() && bestF > 0 && !pl.isShiftKeyDown() && !pl.isUsingItem() && !pl.horizontalCollision
+        // AutoMace (ka == null) steers in the air: never force sprint there, it changes air acceleration (Grim Simulation)
+        if (ka != null && ka.walkSprint.get() && bestF > 0 && !pl.isShiftKeyDown() && !pl.isUsingItem() && !pl.horizontalCollision
             && pl.getFoodData().getFoodLevel() > 6 && !pl.isInWater() && !pl.isFallFlying()
             && !pl.hasEffect(net.minecraft.world.effect.MobEffects.BLINDNESS)) {
             pl.setSprinting(true);

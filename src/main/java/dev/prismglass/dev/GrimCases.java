@@ -222,7 +222,10 @@ final class GrimCases {
             ka.players.set(false);
             ka.hostiles.set(true);
         };
+        int[] attacks0 = {0};
         IntConsumer hits = t -> {
+            if (t == 1) attacks0[0] = dev.prismglass.util.CombatUtil.attacksSent;
+            if (t == 99) GrimTest.log("info attacks sent " + (dev.prismglass.util.CombatUtil.attacksSent - attacks0[0]));
             if (t == 99) mc.level.getEntitiesOfClass(net.minecraft.world.entity.monster.zombie.Zombie.class, mc.player.getBoundingBox().inflate(8))
                 .forEach(z -> GrimTest.log(String.format("info zombie hp %.0f", z.getHealth())));
         };
@@ -235,6 +238,46 @@ final class GrimCases {
             Prism.modules().get(dev.prismglass.module.combat.KillAura.class).range.set(4.2);
             on(dev.prismglass.module.player.Reach.class).mode.parse("NCP");
         }, hits);
+        // ---- new combat modules + velocity + totems (zombie targets need difficulty easy) ----
+        // full diamond = 20 armour; as an attribute so the command stays under the 256-character chat limit
+        String armored = zombie.replace("{id:\"minecraft:knockback_resistance\",base:1}", "{id:\"minecraft:knockback_resistance\",base:1},{id:\"armor\",base:20}");
+        add(cases, "killaura-armored", 100, new String[]{armored, "item replace entity @s hotbar.0 with diamond_sword"}, aura, hits);
+        add(cases, "breachswap", 100, new String[]{armored, "item replace entity @s hotbar.0 with diamond_sword",
+            "item replace entity @s hotbar.1 with mace[enchantments={breach:4}]"}, () -> { aura.run(); on(dev.prismglass.module.combat.BreachSwap.class); }, hits);
+        add(cases, "automace", 160, new String[]{zombie, "item replace entity @s hotbar.0 with diamond_sword", "item replace entity @s hotbar.1 with mace",
+            "item replace entity @s hotbar.2 with wind_charge 64"}, () -> {
+            InvUtil.swap(0, false);
+            var am = on(dev.prismglass.module.combat.AutoMace.class);
+            am.mobs.set(true);
+        }, t -> {
+            if (t % 10 == 0) GrimTest.log(String.format("info mace t=%d y %.2f fall %.2f", t, mc.player.getY(), Prism.modules().get(dev.prismglass.module.combat.AutoMace.class).fall()));
+            if (t == 159) mc.level.getEntitiesOfClass(net.minecraft.world.entity.monster.zombie.Zombie.class, mc.player.getBoundingBox().inflate(8))
+                .forEach(z -> GrimTest.log(String.format("info zombie hp %.0f", z.getHealth())));
+        });
+        add(cases, "spearkill", 120, new String[]{zombie.replace("0 -60 3.5", "0 -60 4"), "item replace entity @s hotbar.0 with iron_spear"}, () -> {
+            InvUtil.swap(0, false);
+            on(dev.prismglass.module.combat.SpearKill.class).mobs.set(true);
+        }, t -> { if (t == 119) mc.level.getEntitiesOfClass(net.minecraft.world.entity.monster.zombie.Zombie.class, mc.player.getBoundingBox().inflate(8))
+            .forEach(z -> GrimTest.log(String.format("info zombie hp %.0f", z.getHealth()))); });
+        IntConsumer hurt = t -> { if (t % 30 == 5) GrimTest.cmd("damage @s 1 minecraft:mob_attack by @e[type=zombie,limit=1,sort=nearest]"); };
+        add(cases, "velocity-none", 100, new String[]{zombie.replace("0 -60 3.5", "0 -60 2")}, () -> {}, hurt);
+        add(cases, "velocity-jumpreset", 100, new String[]{zombie.replace("0 -60 3.5", "0 -60 2")},
+            () -> on(dev.prismglass.module.movement.Velocity.class).mode.parse("JumpReset"), hurt);
+        add(cases, "velocity-budget", 100, new String[]{zombie.replace("0 -60 3.5", "0 -60 2")},
+            () -> on(dev.prismglass.module.movement.Velocity.class).mode.parse("GrimBudget"), hurt);
+        add(cases, "autototem", 100, new String[]{"give @s totem_of_undying 3"}, () -> on(dev.prismglass.module.combat.AutoTotem.class), t -> {
+            if (t == 40) GrimTest.cmd("damage @s 40 minecraft:generic");
+            if (t == 99) GrimTest.log("info totem offhand=" + mc.player.getOffhandItem().getItem() + " alive=" + mc.player.isAlive());
+        });
+        // ---- Bounce ElytraFly pitch sweep ----
+        for (int pitch : new int[]{60, 70, 75, 80, 85, 90}) {
+            add(cases, "bounce-" + pitch, 200, new String[]{"item replace entity @s armor.chest with elytra"}, () -> {
+                var ef = on(dev.prismglass.module.movement.ElytraFly.class);
+                ef.mode.parse("Bounce");
+                ef.bouncePitch.set((double) pitch);
+            }, t -> GrimTest.hold(up(), true));
+        }
+
         add(cases, "airplace-vanilla", 40, stone, () -> {
             InvUtil.swap(0, false);
             on(AirPlace.class).mode.parse("Vanilla");

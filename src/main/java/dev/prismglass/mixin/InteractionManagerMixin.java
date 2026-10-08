@@ -14,6 +14,7 @@ public abstract class InteractionManagerMixin {
     /** Fires for every attack: vanilla clicks and module attacks alike (Criticals, AutoWeapon...). */
     @Inject(method = "attack", at = @At("HEAD"))
     private void prism$attack(Player player, Entity target, CallbackInfo ci) {
+        dev.prismglass.util.CombatUtil.attacksSent++;
         Prism.modules().onAttack(target);
         Prism.reachBudget().onAttack(target);
     }

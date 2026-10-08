@@ -34,6 +34,9 @@ public final class CombatUtil {
         return mc.player.getAttackStrengthScale(0.5f) >= 0.93f;
     }
 
+    /** Dev: attack packets sent so far. */
+    public static int attacksSent;
+
     /**
      * Attacks if every AntiCheat rule allows it right now:
      * min delay (NCP Angle), one target per tick + no action after the flying packet (Grim

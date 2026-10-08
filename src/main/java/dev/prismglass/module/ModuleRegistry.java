@@ -114,6 +114,7 @@ public final class ModuleRegistry {
             new dev.prismglass.module.combat.AutoMace(),
             new dev.prismglass.module.combat.SpearKill(),
             new dev.prismglass.module.render.ShulkerPeek(),
+            new dev.prismglass.module.render.SnapAnims(),
             new dev.prismglass.module.client.KeyActions(),
             new dev.prismglass.module.render.Waypoints(),
             new dev.prismglass.module.world.StashFinder(),

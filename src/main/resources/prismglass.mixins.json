@@ -27,6 +27,7 @@
     "ContainerScreenMixin",
     "ItemInHandRendererMixin",
     "LivingEntityRendererMixin",
+    "LevelRendererMixin",
     "MinecraftClientMixin",
     "MouseMixin",
     "PlayerEntityMixin",

@@ -50,6 +50,9 @@ public class Hud extends Module {
     public final BoolSetting targetHud = bool("TargetHud", true, "Card for the current combat target.");
     public final BoolSetting toasts = bool("Toasts", true, "Glass toast when modules toggle.");
     public final BoolSetting rainbowList = bool("RainbowList", true, "Rainbow accent bars in the list.");
+    public final BoolSetting nowPlaying = bool("NowPlaying", true, "Spotify box at the top: cover + song or synced lyrics (Windows, Spotify app).");
+    public final BoolSetting lyrics = bool("Lyrics", true, "NowPlaying: synced lyrics (from lrclib.net) instead of just the song name.");
+    public final BoolSetting anyPlayer = bool("AnyPlayer", false, "NowPlaying: also other media players (browser, etc.) when Spotify isn't playing.");
     /** Dragged positions, "name:fx,fy;..." (edited with the HUD editor, hidden in the GUI). */
     public final TextSetting layout = text("Layout", "", "HUD element positions (drag them in the HUD editor).").visibleWhen(() -> false);
 
@@ -185,10 +188,91 @@ public class Hud extends Module {
         if (counters.get()) drawCounters(ctx, style);
         if (targetHud.get()) drawTarget(ctx, style, theme);
         if (toasts.get()) drawToasts(ctx, style, theme);
+        dev.prismglass.manager.NowPlaying.keep(nowPlaying.get(), anyPlayer.get());
+        if (nowPlaying.get()) drawNowPlaying(ctx, style, theme);
+    }
+
+    @Override
+    public void onDisable() { dev.prismglass.manager.NowPlaying.stop(); }
+
+    private float npWidth, npScroll = Float.NaN;
+
+    /** Cover on the left; on the right the song, or synced lyrics scrolling up (next = white, now = gray, past = dark). */
+    private void drawNowPlaying(GuiGraphicsExtractor ctx, Glass.Style style, ClickGui theme) {
+        boolean live = dev.prismglass.manager.NowPlaying.active();
+        if (!live && !editing) { npWidth = 0; return; }
+        var font = mc.font;
+        int sw = ctx.guiWidth(), sh = ctx.guiHeight();
+        float pad = 6, art = 32, lineH = 10, h = art + pad * 2;
+        long pos = dev.prismglass.manager.NowPlaying.position();
+        List<dev.prismglass.manager.NowPlaying.Line> lyr = lyrics.get() && live ? dev.prismglass.manager.NowPlaying.lyrics : List.of();
+        boolean showLyrics = !lyr.isEmpty();
+        int cur = showLyrics ? dev.prismglass.manager.NowPlaying.lineAt(pos) : -1;
+        String title = live ? dev.prismglass.manager.NowPlaying.title : "Now playing";
+        String artist = live ? dev.prismglass.manager.NowPlaying.artist : "Spotify";
+
+        // the box fits its text: as wide as the lines in view (or the song), eased so it doesn't snap
+        float textW = 0;
+        if (showLyrics) for (int i = Math.max(0, cur - 1); i <= Math.min(lyr.size() - 1, cur + 1); i++) textW = Math.max(textW, font.width(lyr.get(i).text()));
+        else textW = Math.max(font.width(title), font.width(artist));
+        textW = Mth.clamp(textW, 70, 260);
+        float targetW = pad + art + 8 + textW + pad;
+        npWidth = npWidth == 0 ? targetW : npWidth + (targetW - npWidth) * 0.15f;
+        float w = npWidth;
+        float[] p = place("NowPlaying", w, h, (sw - w) / 2f, 4, sw, sh);
+        Glass.panel(ctx, p[0], p[1], w, h, style);
+
+        int ax = (int) (p[0] + pad), ay = (int) (p[1] + pad);
+        if (dev.prismglass.manager.NowPlaying.hasCover()) {
+            ctx.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, dev.prismglass.manager.NowPlaying.COVER, ax, ay, 0, 0, (int) art, (int) art,
+                dev.prismglass.manager.NowPlaying.coverW, dev.prismglass.manager.NowPlaying.coverH, dev.prismglass.manager.NowPlaying.coverW, dev.prismglass.manager.NowPlaying.coverH);
+        } else {
+            Glass.rounded(ctx, ax, ay, art, art, 4, 0x60303848, 0x60181C28);
+            ctx.text(font, "♪", ax + (int) art / 2 - font.width("♪") / 2, ay + 12, 0xFFAAAAAA, true);
+        }
+        float tx = ax + art + 8, tw = w - (tx - p[0]) - pad;
+
+        if (showLyrics) {
+            if (Float.isNaN(npScroll) || Math.abs(npScroll - cur) > 3) npScroll = cur;
+            else npScroll += (cur - npScroll) * 0.12f;
+            float cy = p[1] + h / 2 - 4;
+            ctx.enableScissor((int) tx, (int) p[1] + 3, (int) (tx + tw) + 2, (int) (p[1] + h) - 3);
+            for (int i = Math.max(0, cur - 3); i <= Math.min(lyr.size() - 1, cur + 5); i++) {
+                String line = lyr.get(i).text().isEmpty() ? "♪" : lyr.get(i).text();
+                if (font.width(line) > tw) line = font.plainSubstrByWidth(line, (int) tw - font.width("...")) + "...";
+                // r: where the line is in the song, tweened (0 = being sung, 1 = up next, -1 = just sung).
+                // The line being sung (gray) sits in the middle, up next (white) below; colours blend as they scroll up.
+                float r = i - npScroll;
+                int col = r >= 1 ? 0xFFFFFFFF : r >= 0 ? ColorUtil.lerp(0xFFAAAAAA, 0xFFFFFFFF, r) : ColorUtil.lerp(0xFFAAAAAA, 0xFF555555, Math.min(1, -r));
+                float d = r;
+                // lines beyond the ones right above/below the middle fade out instead of being cut at the box edge
+                float fade = Mth.clamp(2.1f - Math.abs(d), 0, 1);
+                if (fade <= 0.02f) continue;
+                col = ColorUtil.fade(col, fade);
+                ctx.pose().pushMatrix();
+                ctx.pose().translate(tx, cy + d * lineH);
+                ctx.text(font, line, 0, 0, col, r >= 0);
+                ctx.pose().popMatrix();
+            }
+            ctx.disableScissor();
+        } else {
+            npScroll = Float.NaN;
+            String t = font.width(title) > tw ? font.plainSubstrByWidth(title, (int) tw - font.width("...")) + "..." : title;
+            String a = font.width(artist) > tw ? font.plainSubstrByWidth(artist, (int) tw - font.width("...")) + "..." : artist;
+            ctx.text(font, t, (int) tx, (int) p[1] + 10, 0xFFFFFFFF, true);
+            ctx.text(font, a, (int) tx, (int) p[1] + 21, 0xFFAAAAAA, true);
+        }
+        long dur = dev.prismglass.manager.NowPlaying.duration();
+        if (live && dur > 0) {
+            float f = Mth.clamp((float) pos / dur, 0, 1);
+            int by = (int) (p[1] + h) - 3;
+            ctx.fill((int) tx, by, (int) (tx + tw), by + 1, 0x40FFFFFF);
+            ctx.fill((int) tx, by, (int) (tx + tw * f), by + 1, theme.accent.color());
+        }
     }
 
     private void drawWatermark(GuiGraphicsExtractor ctx, Glass.Style style, ClickGui theme) {
-        String text = Prism.NAME + " §7" + Prism.VERSION;
+        String text = Prism.NAME + " §7" + Prism.VERSION + " §8" + dev.prismglass.BuildInfo.channel();
         float w = mc.font.width(text) + 30, h = 18;
         float[] p = place("Watermark", w, h, 4, 4, ctx.guiWidth(), ctx.guiHeight());
         Glass.panel(ctx, p[0], p[1], w, h, style);

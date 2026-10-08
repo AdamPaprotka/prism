@@ -178,7 +178,7 @@ public class Prism implements ClientModInitializer {
      */
     public static void renderHud(net.minecraft.client.gui.GuiGraphicsExtractor ctx, float delta) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.options.hideGui || modules == null) return;
+        if (mc.player == null || mc.level == null || mc.options.hideGui || modules == null) return; // leaving/respawning: no world for a frame
         ctx.nextStratum();
         dev.prismglass.streamproof.Overlay.markGui();
         modules.onRender2D(ctx, delta);

@@ -34,7 +34,8 @@ public class AutoMace extends Module {
     public final BoolSetting mobs = bool("Mobs", false, "Also target hostile mobs.");
 
     private double apexY;
-    private int jumpStage, cooldown;
+    private int jumpStage, cooldown, airTicks;
+    private LivingEntity launchTarget;
 
     public AutoMace() { super("AutoMace", "Wind charge launch + mace smash (damage grows with the fall).", Category.COMBAT); }
 
@@ -69,6 +70,7 @@ public class AutoMace extends Module {
         // fall tracking: the arc's top since we last moved up
         if (p.onGround() || p.getDeltaMovement().y > 0 || p.isFallFlying()) apexY = p.getY();
 
+        if (airTicks > 0 && (--airTicks == 0 || p.onGround() && airTicks < 35)) { airTicks = 0; launchTarget = null; }
         LivingEntity t = target(Math.max(range.get(), 6));
         if (windJump.get()) windJump(t);
         if (autoHit.get() && t != null && fall() >= minFall.get() && maceSlot() != -1) {
@@ -84,21 +86,26 @@ public class AutoMace extends Module {
         int charge = InvUtil.findHotbar(Items.WIND_CHARGE);
         if (jumpStage == 0) {
             if (t == null || cooldown > 0 || charge == -1 || !p.onGround() || p.distanceTo(t) > range.get() || maceSlot() == -1) return;
-            Prism.rotations().request(p.getYRot(), 90f, 90); // look straight down
-            MovementHooks.requestJump();
             jumpStage = 1;
-            return;
         }
-        // in the air, rising, looking down: throw it under us
-        if (jumpStage >= 1) {
-            Prism.rotations().request(p.getYRot(), 90f, 90);
-            if (++jumpStage > 6 || charge == -1) { jumpStage = 0; cooldown = 20; return; }
-            if (p.onGround() || Prism.rotations().getServerPitch() < 85f) return;
-            if (!WeaponSwap.forThisHit(charge)) return;
-            mc.gameMode.useItem(p, InteractionHand.MAIN_HAND);
-            jumpStage = 0;
-            cooldown = 20;
-        }
+        // look straight down first; once the server has that look, throw at our feet and jump in the same tick:
+        // the blast goes off right under us while the jump is starting (the classic wind charge launch)
+        Prism.rotations().request(p.getYRot(), 90f, 90);
+        if (++jumpStage > 8 || charge == -1 || !p.onGround()) { jumpStage = 0; cooldown = 20; return; }
+        if (Prism.rotations().getServerPitch() < 85f || !WeaponSwap.forThisHit(charge)) return;
+        mc.gameMode.useItem(p, InteractionHand.MAIN_HAND);
+        MovementHooks.requestJump();
+        launchTarget = t;
+        airTicks = 40;
+        jumpStage = 0;
+        cooldown = 20;
+    }
+
+    /** While airborne after our launch: where to steer (the target's feet), else null. Read by the move hooks. */
+    public net.minecraft.world.phys.Vec3 airChasePoint() {
+        LivingEntity t = launchTarget;
+        if (airTicks == 0 || t == null || !t.isAlive() || mc.player.onGround()) return null;
+        return Math.hypot(t.getX() - mc.player.getX(), t.getZ() - mc.player.getZ()) < 0.4 ? null : t.position();
     }
 
     @Override

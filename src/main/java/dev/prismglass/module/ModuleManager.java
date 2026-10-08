@@ -51,11 +51,19 @@ public final class ModuleManager {
 
     // ---- dispatch ---------------------------------------------------------------------------
 
+    private long lastCoreError;
+
     private void each(Consumer<Module> action) {
         for (Module m : enabled) {
             try {
                 action.accept(m);
             } catch (Throwable t) {
+                // the HUD and AntiCheat are core: log and keep them, a one-frame glitch must not switch them off for good
+                if (m instanceof dev.prismglass.module.client.Hud || m instanceof dev.prismglass.module.client.AntiCheat) {
+                    if (System.currentTimeMillis() - lastCoreError > 10_000) Prism.LOG.error("Module {} threw in a hook", m.getName(), t);
+                    lastCoreError = System.currentTimeMillis();
+                    continue;
+                }
                 Prism.LOG.error("Module {} crashed in a hook; disabling it", m.getName(), t);
                 m.setEnabledSilently(false);
             }

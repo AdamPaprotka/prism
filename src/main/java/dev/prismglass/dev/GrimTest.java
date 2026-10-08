@@ -95,6 +95,7 @@ public final class GrimTest {
             return;
         }
         Case c = CASES.get(index);
+        if (t == 0 && !mc.player.isAlive()) { mc.player.respawn(); return; } // a case killed us: respawn first
         if (t == 0) {
             cmd("gamemode survival");
             cmd("clear @s");

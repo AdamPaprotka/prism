@@ -8,6 +8,20 @@
 - SpearKill (Combat): stabs the moment an enemy is between the spear's 2 and 4.5 block reach at full charge, aims at them, and holds the charged lunge while you sprint at them. AutoSwap to a spear in your hotbar.
 - Waypoints (Render): `.wp add <name> [x y z]`, `.wp del`, `.wp list`, `.wp clear`. Beam + distance label, overworld/nether conversion, automatic Death waypoint. Saved per server/world.
 - ShulkerPeek (Render): hover a shulker box in any inventory or chest to see its 27 slots.
+- SnapAnims (Render): no tweening between ticks, so players jump from tick to tick. Blocks mode also snaps them to the block grid (Grid size, SnapY), YawStep snaps turning to 45/90 degree steps. Players / Self / Mobs / Others. Visual only.
+
+### HUD
+- NowPlaying: Spotify box at the top with the album cover and the song, or synced lyrics scrolling up (next lines white, current gray, past dark gray). Reads the Spotify desktop app through the Windows media session, so no login. Lyrics from Musixmatch when it is Spotify (one guest token, saved in prism/musixmatch.properties), with lrclib.net as the fallback; the cover is Spotify's own (from the media session), or an iTunes search for other players. Only artist/title/album are sent. Settings: NowPlaying, Lyrics, AnyPlayer. The box resizes to fit the text.
+- Watermark shows the release channel: Prism 1.4.0 beta.
+- Fix: the HUD could switch itself off when you died, respawned or left a server (one frame with no world). The HUD and AntiCheat are never auto-disabled after an error any more.
+
+### Freecam
+- ForceRender (on by default): turns off chunk occlusion culling while flying, so areas behind walls or behind you no longer vanish.
+
+### Combat fixes (tested on Grim 2.3.74: 0 alerts)
+- BreachSwap only swaps once the mace itself is charged (MinCharge). A mace charges in about 33 ticks against a sword's 12.5, so swapping at sword pace gave weak mace hits (7 damage against the sword's 19 in testing).
+- AutoMace: after the wind charge launch it steers you over the target, so the smash lands in reach (it used to fall 3.5 blocks away). Tested: 68 damage in 8 s against 9 before, 0 alerts.
+- ElytraFly Bounce: pitch 75 tested best on Grim (186 blocks in 10 s, 0 setbacks); it's the default.
 
 ### Keybinds tab (ClickGUI top bar)
 - Keys for things that aren't modules: Inspect (default I: CS:GO-style inspect animation of your held item), Quick Pearl (throw a pearl without switching to it), Mark Waypoint, Copy Coords, HUD Editor, Panic. Left click to set a key, right click to clear.
