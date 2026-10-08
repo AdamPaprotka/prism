@@ -131,6 +131,26 @@ public final class CommandManager {
             double yaw = Math.toRadians(mc.player.getYRot() + 90);
             mc.player.setPos(mc.player.getX() + Math.cos(yaw) * d, mc.player.getY(), mc.player.getZ() + Math.sin(yaw) * d);
         }));
+        add(new Command("wp", "wp add <name> [x y z] | del <name> | list | clear", "Waypoints.", a -> {
+            var wp = Prism.modules().get(dev.prismglass.module.render.Waypoints.class);
+            switch (arg(a, 0).toLowerCase()) {
+                case "add" -> {
+                    String name = arg(a, 1);
+                    int x = a.length > 4 ? Integer.parseInt(a[2]) : mc.player.getBlockX();
+                    int y = a.length > 4 ? Integer.parseInt(a[3]) : mc.player.getBlockY();
+                    int z = a.length > 4 ? Integer.parseInt(a[4]) : mc.player.getBlockZ();
+                    wp.add(name, x, y, z);
+                    if (!wp.isEnabled()) wp.setEnabled(true);
+                    ChatUtil.good("Waypoint " + name + " at " + x + " " + y + " " + z);
+                }
+                case "del", "remove" -> ChatUtil.info(wp.remove(arg(a, 1)) ? "Removed " + a[1] : "No waypoint " + a[1]);
+                case "clear" -> { wp.clear(); ChatUtil.good("Waypoints cleared"); }
+                default -> {
+                    if (wp.points().isEmpty()) ChatUtil.info("No waypoints here. .wp add <name>");
+                    for (var p : wp.points()) ChatUtil.info("§f" + p.name() + " §7" + p.x() + " " + p.y() + " " + p.z() + " (" + p.dim() + ")");
+                }
+            }
+        }, "waypoint", "waypoints"));
         add(new Command("pearltest", "pearltest [distance]", "Singleplayer: an enemy pearl is thrown next to you (PearlPredict / AutoPearl test).", a -> {
             double dist = a.length > 0 ? Double.parseDouble(a[0]) : 25;
             Prism.modules().get(dev.prismglass.module.render.PearlPredict.class).spawnTestPearl(dist);

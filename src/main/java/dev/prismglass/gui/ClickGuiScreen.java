@@ -87,7 +87,7 @@ public class ClickGuiScreen extends Screen {
     private final ClickGui theme;
 
     // Config | Profiles bar next to the search
-    private enum Menu { NONE, CONFIG, PROFILES }
+    private enum Menu { NONE, CONFIG, PROFILES, KEYBINDS }
     private Menu menu = Menu.NONE;
     private float menuAnim, menuScroll;
     private float menuX, menuY, menuW, menuH;   // last frame's dropdown rect
@@ -185,9 +185,10 @@ public class ClickGuiScreen extends Screen {
     // ---- Config | Profiles ------------------------------------------------------------------------
 
     private void drawConfigBar(GuiGraphicsExtractor ctx, float x, float y, float alpha) {
-        String[] labels = {"Config", "Profiles", "HUD"};
-        Menu[] targets = {Menu.CONFIG, Menu.PROFILES, null}; // HUD opens the editor instead of a menu
-        String[] tips = {"Save, reload, layout and the ClickGUI look.", "Switch, create and delete profiles.", "Drag HUD elements around with the mouse."};
+        String[] labels = {"Config", "Profiles", "Keybinds", "HUD"};
+        Menu[] targets = {Menu.CONFIG, Menu.PROFILES, Menu.KEYBINDS, null}; // HUD opens the editor instead of a menu
+        String[] tips = {"Save, reload, layout and the ClickGUI look.", "Switch, create and delete profiles.",
+            "Keys for things that aren't modules: Inspect, Quick Pearl, waypoints...", "Drag HUD elements around with the mouse."};
         float[] widths = new float[labels.length];
         float total = 0;
         for (int i = 0; i < labels.length; i++) total += widths[i] = font.width(labels[i]) + 20;
@@ -418,7 +419,7 @@ public class ClickGuiScreen extends Screen {
     }
 
     /** Dev GUI test only: 0 closes, 1 Config, 2 Profiles. */
-    public void debugMenu(int which) { openMenu(which == 1 ? Menu.CONFIG : which == 2 ? Menu.PROFILES : Menu.NONE); }
+    public void debugMenu(int which) { openMenu(which == 1 ? Menu.CONFIG : which == 2 ? Menu.PROFILES : which == 3 ? Menu.KEYBINDS : Menu.NONE); }
 
     private void openMenu(Menu m) {
         menu = m;
@@ -432,9 +433,9 @@ public class ClickGuiScreen extends Screen {
     private void drawMenu(GuiGraphicsExtractor ctx, int mx, int my, float delta) {
         if (menu == Menu.NONE) return;
         menuAnim = approach(menuAnim, 1f, delta);
-        float w = menu == Menu.CONFIG ? 172 : 150;
+        float w = menu == Menu.CONFIG ? 172 : menu == Menu.KEYBINDS ? 190 : 150;
         float x = Mth.clamp(barX + barW - w, 4, width - w - 4), y = barY + barH + 4;
-        float content = (menu == Menu.CONFIG ? configHeight() : profilesHeight()) + PAD * 2;
+        float content = (menu == Menu.CONFIG ? configHeight() : menu == Menu.KEYBINDS ? keybindsHeight() : profilesHeight()) + PAD * 2;
         float maxH = Math.max(40, height - y - 8);
         float h = Math.min(content, maxH) * easeOut(menuAnim);
         menuScroll = Mth.clamp(menuScroll, 0, Math.max(0, content - maxH));
@@ -448,8 +449,32 @@ public class ClickGuiScreen extends Screen {
         ctx.enableScissor((int) x, clipTop, (int) (x + w), clipBottom);
         float cy = y + PAD - menuScroll;
         if (menu == Menu.CONFIG) drawConfigMenu(ctx, x + 4, cy, w - 8, mx, my, clipTop, clipBottom);
+        else if (menu == Menu.KEYBINDS) drawKeybindsMenu(ctx, x + 4, cy, w - 8, mx, my, clipTop, clipBottom);
         else drawProfilesMenu(ctx, x + 4, cy, w - 8, mx, my, clipTop, clipBottom);
         ctx.disableScissor();
+    }
+
+    private float keybindsHeight() { return Prism.modules().get(dev.prismglass.module.client.KeyActions.class).actions().size() * MODULE_H + 4; }
+
+    /** Keybinds: one row per action; left click = press a key, right click = unbind. */
+    private void drawKeybindsMenu(GuiGraphicsExtractor ctx, float x, float y, float w, int mx, int my, int clipTop, int clipBottom) {
+        for (var a : Prism.modules().get(dev.prismglass.module.client.KeyActions.class).actions()) {
+            boolean hover = mouseIn(x, y, w, MODULE_H) && my >= clipTop && my <= clipBottom;
+            if (hover) {
+                fill(ctx, (int) x, (int) y, (int) (x + w), (int) (y + MODULE_H), 0x18FFFFFF);
+                tooltip = a.description() + "  (left click: set key, right click: clear)";
+            }
+            ctx.text(font, a.name(), (int) x + 6, (int) y + 4, TEXT, false);
+            String key = listening == a.key() ? "Press a key..." : KeyUtil.name(a.key().get());
+            float kw = font.width(key) + 10, kx = x + w - kw - 4;
+            Glass.rounded(ctx, kx, y + 2, kw, MODULE_H - 4, 3, listening == a.key() ? ColorUtil.withAlpha(theme.accent.color(), 150) : 0x30FFFFFF, 0x18FFFFFF);
+            ctx.text(font, key, (int) kx + 5, (int) y + 4, listening == a.key() ? TEXT : DIM, false);
+            if (y + MODULE_H >= clipTop && y <= clipBottom) {
+                var k = a.key();
+                hits.add(new Hit(x, y, w, MODULE_H, (b, cx, cy) -> { if (b == 1) k.set(KeyUtil.NONE); else listening = k; }, null, null));
+            }
+            y += MODULE_H;
+        }
     }
 
     private float configHeight() { return 4 * 20 + 14 + SETTING_H + settingsHeight(theme); }
@@ -807,7 +832,8 @@ public class ClickGuiScreen extends Screen {
     // ---- layout helpers -------------------------------------------------------------------------
 
     private List<Module> filtered(Category cat) {
-        List<Module> all = Prism.modules().byCategory(cat);
+        List<Module> all = new java.util.ArrayList<>(Prism.modules().byCategory(cat));
+        all.removeIf(m -> m instanceof dev.prismglass.module.client.KeyActions); // shown in the Keybinds tab instead
         if (search.isEmpty()) return all;
         String q = search.toLowerCase(Locale.ROOT);
         List<Module> out = new ArrayList<>();

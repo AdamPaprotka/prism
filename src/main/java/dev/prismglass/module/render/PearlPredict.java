@@ -49,6 +49,8 @@ public class PearlPredict extends Module {
     public final BoolSetting labels = bool("Labels", true, "Owner and seconds until it lands.");
     public final BoolSetting path = bool("Path", true, "Draw the flight path.");
     public final NumberSetting maxTicks = num("MaxTicks", 300, 50, 1200, 10, "How far ahead to simulate.");
+    public final BoolSetting alerts = bool("Alerts", true, "Toast + sound when an enemy pearl is about to land near you.");
+    public final NumberSetting alertRange = num("AlertRange", 12, 3, 40, 1, "Alerts: how close to you the pearl has to land.").visibleWhen(alerts::get);
     public final BoolSetting autoPearl = bool("AutoPearl", false, "When an enemy pearls away, throw yours at the angle that lands closest to where theirs lands.");
     public final NumberSetting followRange = num("FollowRange", 8, 2, 24, 0.5, "AutoPearl: only follow enemies this close when they throw.").visibleWhen(autoPearl::get);
     public final NumberSetting minDistance = num("MinDistance", 6, 2, 40, 1, "AutoPearl: ignore pearls landing closer than this to you.").visibleWhen(autoPearl::get);
@@ -175,6 +177,7 @@ public class PearlPredict extends Module {
     @Override
     public void onTick() {
         if (restoreSlot != -1) { InvUtil.restore(restoreSlot); restoreSlot = -1; }
+        if (alerts.get()) alertPearls();
         if (!autoPearl.get()) { followTarget = null; return; }
         // an enemy just threw a pearl near us: follow where it lands
         for (Entity e : mc.level.entitiesForRendering()) {
@@ -190,6 +193,24 @@ public class PearlPredict extends Module {
         }
         seen.removeIf(id -> mc.level.getEntity(id) == null);
         if (followTarget != null) follow();
+    }
+
+    private final Set<Integer> alerted = new HashSet<>();
+
+    /** Enemy pearl landing near you: one toast + ping per pearl, with who and how long until they're there. */
+    private void alertPearls() {
+        for (Entity e : mc.level.entitiesForRendering()) {
+            if (!(e instanceof ThrownEnderpearl pearl) || !pearl.isAlive() || alerted.contains(pearl.getId())) continue;
+            if (!(pearl.getOwner() instanceof Player owner) || owner == mc.player || Prism.friends().isFriend(owner)) continue;
+            Flight f = simulate(pearl, maxTicks.getInt());
+            if (f.teleport() == null) continue;
+            double d = f.teleport().distanceTo(mc.player.position());
+            if (d > alertRange.get()) continue;
+            alerted.add(pearl.getId());
+            dev.prismglass.module.client.Hud.message(String.format("%s pearls %.0fm from you in %.1fs", owner.getName().getString(), d, f.ticks() / 20.0), 0xFFFF7A5C);
+            mc.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_PLING, 1.6f));
+        }
+        alerted.removeIf(id -> mc.level.getEntity(id) == null);
     }
 
     private void follow() {

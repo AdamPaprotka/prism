@@ -24,6 +24,8 @@
     "KeyboardMixin",
     "LivingEntityMixin",
     "FireworkRocketEntityMixin",
+    "ContainerScreenMixin",
+    "ItemInHandRendererMixin",
     "LivingEntityRendererMixin",
     "MinecraftClientMixin",
     "MouseMixin",

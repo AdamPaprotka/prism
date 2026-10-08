@@ -80,7 +80,22 @@ public final class HudTest {
         if (t == 197) shot("prism-about.png");
         if (t == 200) mc.setScreen(new dev.prismglass.gui.ChangelogScreen(null));
         if (t == 215) shot("prism-changelog.png");
-        if (t == 225) {
+        if (t == 222) {
+            mc.setScreen(null);
+            mc.getSingleplayerServer().execute(() -> mc.getSingleplayerServer().getCommands().performPrefixedCommand(
+                mc.getSingleplayerServer().createCommandSourceStack(), "item replace entity @p weapon.mainhand with diamond_sword"));
+            var wp = Prism.modules().get(dev.prismglass.module.render.Waypoints.class);
+            wp.add("Base", mc.player.getBlockX() + 6, mc.player.getBlockY(), mc.player.getBlockZ() + 25);
+            wp.setEnabled(true);
+        }
+        if (t == 232) Prism.modules().get(dev.prismglass.module.client.KeyActions.class).actions().get(0).run().run(); // Inspect
+        if (t == 238) shot("prism-inspect-1.png");
+        if (t == 250) shot("prism-inspect-2.png");
+        if (t == 262) { mc.setScreen(new dev.prismglass.gui.ClickGuiScreen()); }
+        if (t == 266 && mc.screen instanceof dev.prismglass.gui.ClickGuiScreen g) g.debugMenu(3);
+        if (t == 280) shot("prism-keybinds.png");
+        if (t == 290) {
+            Prism.modules().get(dev.prismglass.module.render.Waypoints.class).remove("Base");
             hud.layout.set(oldLayout);
             hud.listFormat.parse(oldFormat);
             Prism.config().save();

@@ -87,6 +87,10 @@ public final class ModuleManager {
     /** Keybinds. {@code pressed} false = released (for Hold bind mode). */
     public void onKey(int key, boolean pressed) {
         if (key == KeyUtil.NONE) return;
+        if (pressed) {
+            var actions = get(dev.prismglass.module.client.KeyActions.class);
+            if (actions != null) actions.onKeyPress(key);
+        }
         for (Module m : modules) {
             if (m.bind.get() != key) continue;
             if (m.bindMode.is("Hold")) m.setEnabled(pressed);

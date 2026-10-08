@@ -110,6 +110,12 @@ public final class ModuleRegistry {
             new dev.prismglass.module.world.EChestFarmer(),
             new dev.prismglass.module.world.Nuker(),
             new dev.prismglass.module.world.HighwayBuilder(),
+            new dev.prismglass.module.combat.BreachSwap(),
+            new dev.prismglass.module.combat.AutoMace(),
+            new dev.prismglass.module.combat.SpearKill(),
+            new dev.prismglass.module.render.ShulkerPeek(),
+            new dev.prismglass.module.client.KeyActions(),
+            new dev.prismglass.module.render.Waypoints(),
             new dev.prismglass.module.world.StashFinder(),
             new dev.prismglass.module.world.Timer()
         );

@@ -1,5 +1,20 @@
 # Prism Glass changelog
 
+## 1.4.0 - 2026-10-08
+
+### New modules
+- AutoMace (Combat): every hit while falling swaps to your best mace for that hit (smash damage grows with the fall). WindJump: with an enemy close, jumps and throws a wind charge straight down to launch you; AutoHit smashes the enemy below once you've fallen MinFall.
+- BreachSwap (Combat): every hit (yours or KillAura's) uses your Breach mace for that one hit (armour piercing) and swaps back next tick.
+- SpearKill (Combat): stabs the moment an enemy is between the spear's 2 and 4.5 block reach at full charge, aims at them, and holds the charged lunge while you sprint at them. AutoSwap to a spear in your hotbar.
+- Waypoints (Render): `.wp add <name> [x y z]`, `.wp del`, `.wp list`, `.wp clear`. Beam + distance label, overworld/nether conversion, automatic Death waypoint. Saved per server/world.
+- ShulkerPeek (Render): hover a shulker box in any inventory or chest to see its 27 slots.
+
+### Keybinds tab (ClickGUI top bar)
+- Keys for things that aren't modules: Inspect (default I: CS:GO-style inspect animation of your held item), Quick Pearl (throw a pearl without switching to it), Mark Waypoint, Copy Coords, HUD Editor, Panic. Left click to set a key, right click to clear.
+
+### PearlPredict
+- Alerts: toast + ping when an enemy's pearl is about to land near you (AlertRange), with who and when.
+
 ## 1.3.0 - 2026-10-04
 
 ### New
