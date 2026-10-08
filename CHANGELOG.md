@@ -1,5 +1,10 @@
 # Prism Glass changelog
 
+## 1.4.2 - 2026-10-08
+
+### Updater
+- Prism checks GitHub for a newer release when you join a world and tells you with a toast. The About screen (click the Prism logo) and the Changelog have an Update button: it downloads the jar for your Minecraft version next to the current one, and when you close Minecraft the old jar is swapped for the new one (Windows keeps the running jar locked, and two Prism jars would stop Fabric from starting). Restart and you're updated.
+
 ## 1.4.1 - 2026-10-08
 
 ### KillAura: knockback displacement

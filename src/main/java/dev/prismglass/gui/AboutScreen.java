@@ -112,13 +112,14 @@ public class AboutScreen extends Screen {
         // buttons
         buttonRects.clear();
         buttonActions.clear();
-        String[] labels = {"Changelog", "Copy info", "Open folder"};
+        String[] labels = {"Changelog", "Copy info", "Open folder", dev.prismglass.manager.Updater.label()};
         Runnable[] actions = {
             () -> minecraft.setScreen(new ChangelogScreen(this)),
             () -> { minecraft.keyboardHandler.setClipboard(report()); flash = "Copied"; flashAt = System.currentTimeMillis(); },
             () -> net.minecraft.util.Util.getPlatform().openPath(Prism.config().folder()),
+            dev.prismglass.manager.Updater::click,
         };
-        float gap = 6, btnW = (w - 28 - gap * 2) / 3, btnY = y + h - 26;
+        float gap = 6, btnW = (w - 28 - gap * 3) / 4, btnY = y + h - 26;
         for (int i = 0; i < labels.length; i++) {
             float btnX = x + 14 + i * (btnW + gap);
             boolean hover = mouseX >= btnX && mouseX < btnX + btnW && mouseY >= btnY && mouseY < btnY + 16;

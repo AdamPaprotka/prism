@@ -23,6 +23,7 @@ public class ChangelogScreen extends Screen {
     private final @Nullable Screen parent;
     private float scroll, targetScroll;
     private int contentH;
+    private float[] updateBtn;
 
     public ChangelogScreen(@Nullable Screen parent) {
         super(Component.literal("Changelog"));
@@ -61,8 +62,14 @@ public class ChangelogScreen extends Screen {
         float w = Math.min(340, width - 32), h = height - 48, x = (width - w) / 2f, y = 24;
         Glass.panel(ctx, x, y, w, h, theme.panelStyle());
         ctx.text(font, "Changelog", (int) x + 12, (int) y + 9, TEXT, true);
-        String hint = "Scroll  ·  Esc";
-        ctx.text(font, hint, (int) (x + w - 12 - font.width(hint)), (int) y + 9, DIM, false);
+        // update button in the header: checks GitHub, then downloads the new version
+        String label = dev.prismglass.manager.Updater.label();
+        float bw = font.width(label) + 14, bx = x + w - 10 - bw, by = y + 5;
+        boolean hover = mouseX >= bx && mouseX < bx + bw && mouseY >= by && mouseY < by + 14;
+        boolean avail = dev.prismglass.manager.Updater.state == dev.prismglass.manager.Updater.State.AVAILABLE;
+        Glass.rounded(ctx, bx, by, bw, 14, 4, avail ? (hover ? 0x66FFFFFF : 0x44FFFFFF) : (hover ? 0x44FFFFFF : 0x26FFFFFF), hover ? 0x30FFFFFF : 0x14FFFFFF);
+        ctx.text(font, label, (int) (bx + 7), (int) by + 3, avail ? accent : TEXT, true);
+        updateBtn = new float[]{bx, by, bw, 14};
         ctx.fill((int) x + 10, (int) y + 22, (int) (x + w - 10), (int) y + 23, 0x30FFFFFF);
 
         scroll += (targetScroll - scroll) * 0.35f;
@@ -104,6 +111,16 @@ public class ChangelogScreen extends Screen {
             float barH = Math.max(16, view * view / (float) contentH), barY = top + (view - barH) * (scroll / max);
             ctx.fill((int) (x + w - 6), (int) barY, (int) (x + w - 4), (int) (barY + barH), 0x50FFFFFF);
         }
+    }
+
+    @Override
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick) {
+        float[] r = updateBtn;
+        if (r != null && event.x() >= r[0] && event.x() < r[0] + r[2] && event.y() >= r[1] && event.y() < r[1] + r[3]) {
+            dev.prismglass.manager.Updater.click();
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override
