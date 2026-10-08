@@ -39,6 +39,7 @@ loom {
             if (project.hasProperty('pflytest')) vmArg '-Dprismglass.pflytest=true'
             if (project.hasProperty('crystaltest')) vmArg '-Dprismglass.crystaltest=true'
             if (project.hasProperty('elytrabottest')) vmArg '-Dprismglass.elytrabottest=true'
+            if (project.hasProperty('ebwall')) vmArg '-Dprismglass.ebwall=true'
             if (project.hasProperty('grimtest')) vmArg '-Dprismglass.grimtest=true'
             if (project.hasProperty('grimcases')) vmArg "-Dprismglass.grimcases=${project.property('grimcases')}"
             if (project.hasProperty('pflymode')) vmArg "-Dprismglass.pflymode=${project.property('pflymode')}"

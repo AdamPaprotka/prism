@@ -1,5 +1,17 @@
 # Prism Glass changelog
 
+## 1.4.1 - 2026-10-08
+
+### KillAura: knockback displacement
+- KBDisplace + KBAngle: bend where your sprint hits knock them. A hit's knockback is a 0.4 push straight away from your position plus a 0.5+ sprint/Knockback push that follows the hit's yaw, so aiming the hit's yaw off by KBAngle bends the flight.
+- On Grim the yaw has to stay inside their hitbox (a few degrees at normal range): tested 0 alerts, same hit rate. KBFull uses the whole angle on vanilla / no-AC servers.
+- KBLines: guide on the target. White line from inside them pointing at you (always), pink line at KBAngle off it, yellow line where a hit will actually send them. Everything is relative to you, so it stays right as you move.
+
+### ElytraBot doesn't fly into walls
+- Looks ~1.5 s ahead every airborne tick (look and velocity direction, rays across the hitbox). When blocked it scans a fan of headings (up to 150 degrees each way, level to steep climb), takes the clearest one closest to the target and turns faster while dodging. Works while climbing, cruising and landing (it only used to check straight ahead while cruising).
+- Rockets only fire into open air (including the takeoff rocket, which used to boost into hillsides).
+- Tested: flew around a 61-wide wall up to build height placed 45 blocks after takeoff, 0 collisions, full health, landed 1 m from the target.
+
 ## 1.4.0 - 2026-10-08
 
 ### New modules

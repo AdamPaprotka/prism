@@ -221,6 +221,7 @@ final class GrimCases {
             var ka = on(dev.prismglass.module.combat.KillAura.class);
             ka.players.set(false);
             ka.hostiles.set(true);
+            ka.kbDisplace.set(false);
         };
         int[] attacks0 = {0};
         IntConsumer hits = t -> {
@@ -230,6 +231,13 @@ final class GrimCases {
                 .forEach(z -> GrimTest.log(String.format("info zombie hp %.0f", z.getHealth())));
         };
         add(cases, "killaura", 100, arena, aura, hits);
+        add(cases, "killaura-kb", 100, arena, () -> {
+            aura.run();
+            var ka = Prism.modules().get(dev.prismglass.module.combat.KillAura.class);
+            ka.kbDisplace.set(true);
+            ka.kbAngle.set(45.0);
+            ka.kbFull.set(false);
+        }, hits);
         add(cases, "crit-legit", 100, arena, () -> { aura.run(); on(dev.prismglass.module.combat.Criticals.class).mode.parse("Legit"); },
             t -> { GrimTest.hold(jump(), true); hits.accept(t); });
         add(cases, "crit-ncp", 100, arena, () -> { aura.run(); on(dev.prismglass.module.combat.Criticals.class).mode.parse("NCP"); }, hits);

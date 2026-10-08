@@ -20,7 +20,12 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Elytra autopilot to coordinates ({@code .elytrabot <x> <z>}): takes off, climbs to the cruise height, flies there
- * with firework boosts when slow, pulls up for anything ahead, then glides down and lands.
+ * with firework boosts when slow, then glides down and lands.
+ *
+ * <p>Obstacles: every airborne tick it checks the way ahead (look and velocity direction, a few rays across the
+ * hitbox, ~1.5 s of flight). When that isn't clear it scans a fan of headings (up to 150 degrees left/right, level to
+ * steep climb), takes the clearest one closest to the target, turns faster while dodging, and won't fire a rocket
+ * unless the chosen path is open (rocketing into a wall is how elytras kill you).
  *
  * <p>Elytra physics follows where you look, so it steers your real view (turned smoothly, never snapped); a silent
  * rotation would make the server simulate a different flight. Rocket slot swaps go back the next tick.
@@ -37,6 +42,11 @@ public class ElytraBot extends Module {
     private enum State { TAKEOFF, CLIMB, CRUISE, DESCEND }
 
     private State state = State.TAKEOFF;
+    /** While dodging: the heading/pitch being held (re-checked every tick, re-picked every few), else null. */
+    private float[] dodge;
+    private int dodgeTicks;
+    /** Clearance along the heading chosen this tick (blocks), for the rocket rule. */
+    private double pathClear = Double.MAX_VALUE, lookUsed = 10;
     private int ticks, lastRocket = -1000, restoreSlot = -1, stuckTicks;
     private double startDist;
 
@@ -91,7 +101,8 @@ public class ElytraBot extends Module {
         switch (state) {
             case TAKEOFF -> takeoff();
             case CLIMB -> {
-                fly(-35, true);
+                if (!p.isFallFlying()) { state = State.TAKEOFF; break; }
+                fly(-35, true, true);
                 if (p.getY() >= cruiseY.get() - 5) state = State.CRUISE;
             }
             case CRUISE -> cruise();
@@ -101,7 +112,8 @@ public class ElytraBot extends Module {
 
     private void takeoff() {
         var p = mc.player;
-        if (p.isFallFlying()) { state = State.CLIMB; rocket(); return; }
+        // the first rocket goes through fly()'s open-path check (a takeoff boost into a hillside hurts)
+        if (p.isFallFlying()) { state = State.CLIMB; fly(-35, true, true); return; }
         if (p.onGround()) { MovementHooks.requestJump(); return; }
         // in the air: open the elytra once falling (jump release -> press, Grim ElytraB-safe)
         if (p.getDeltaMovement().y < -0.04 && !MovementHooks.glidePending()) MovementHooks.requestGlide();
@@ -112,12 +124,7 @@ public class ElytraBot extends Module {
         if (!p.isFallFlying()) { state = State.TAKEOFF; return; }
         double err = cruiseY.get() - p.getY();
         float pitch = (float) Mth.clamp(-err * 1.5, -25, 12);
-        // something ahead within ~1.5 s at this speed: pull up hard
-        Vec3 vel = p.getDeltaMovement();
-        Vec3 ahead = p.position().add(vel.x * 30, Math.min(0, vel.y * 30) - 1, vel.z * 30);
-        boolean blocked = mc.level.clip(new ClipContext(p.position(), ahead, ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, p)).getType() != HitResult.Type.MISS;
-        if (blocked) pitch = -40;
-        fly(pitch, blocked || err > 10);
+        fly(pitch, err > 10, true);
     }
 
     /**
@@ -143,11 +150,8 @@ public class ElytraBot extends Module {
         } else {
             pitch = above < 4 ? -8 : 2;                                                            // level out, flare
         }
-        Vec3 vel = p.getDeltaMovement();
-        Vec3 ahead = p.position().add(vel.x * 15, vel.y * 15, vel.z * 15);
-        if (mc.level.clip(new ClipContext(p.position(), ahead, ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, p)).getType() != HitResult.Type.MISS
-            && above > 3) pitch = -25;                                                             // terrain ahead: up
-        steer(pitch, yawOffset);
+        // dodge walls on the way down, but not the ground we're meant to touch at the end
+        steer(pitch, yawOffset, above > 6);
     }
 
     private double groundHeight() {
@@ -155,20 +159,93 @@ public class ElytraBot extends Module {
         return mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z);
     }
 
-    /** Turn the view toward the target (yaw) and to {@code pitch}, rocketing when slow or asked to. */
-    private void fly(float pitch, boolean wantBoost) {
+    /** Turn the view toward the target (yaw) and to {@code pitch}, rocketing when slow or asked to (path permitting). */
+    private void fly(float pitch, boolean wantBoost, boolean avoid) {
         var p = mc.player;
-        steer(pitch, 0);
+        steer(pitch, 0, avoid);
         double speed = p.getDeltaMovement().length();
-        if (p.isFallFlying() && (wantBoost || speed < minSpeed.get())) rocket();
+        // only boost into open air: ~2 s of flight clear on the heading we're actually taking (or a steep escape climb)
+        boolean open = pathClear >= lookUsed || dodge != null && dodge[1] <= -30 && pathClear >= Math.min(12, lookUsed);
+        if (p.isFallFlying() && open && (wantBoost || speed < minSpeed.get())) rocket();
     }
 
-    /** Smoothly turn toward the target (plus an offset, for orbiting) and to the pitch; no rockets. */
-    private void steer(float pitch, float yawOffset) {
+    // ---- obstacle avoidance -------------------------------------------------------------------------
+
+    /** Ray start points around the body (the gliding hitbox is ~0.6 x 0.6). */
+    private static final double[][] BODY = {{0, 0.3, 0}, {0.35, 0.3, 0}, {-0.35, 0.3, 0}, {0, 0.3, 0.35}, {0, 0.3, -0.35}, {0, 0.75, 0}, {0, -0.1, 0}};
+
+    /** Free distance (blocks, up to len) flying along yaw/pitch, from a few points across the hitbox. */
+    private double clearance(float yaw, float pitch, double len, int rays) {
+        var p = mc.player;
+        Vec3 dir = Vec3.directionFromRotation(pitch, yaw);
+        double best = len;
+        for (int i = 0; i < rays; i++) {
+            Vec3 from = p.position().add(BODY[i][0], BODY[i][1], BODY[i][2]);
+            var hit = mc.level.clip(new ClipContext(from, from.add(dir.scale(len)), ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, p));
+            if (hit.getType() != HitResult.Type.MISS) best = Math.min(best, hit.getLocation().distanceTo(from));
+        }
+        return best;
+    }
+
+    private static final float[] YAW_FAN = {0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 120, -120, 150, -150};
+    private static final float[] PITCH_FAN = {-55, -35, -15, 0, 15};
+
+    /**
+     * The heading to actually fly: {wantYaw, wantPitch} when that (and where we're really moving) is clear for
+     * ~1.5 s, else the clearest fan candidate, scored by how far it's free minus how far it turns off course.
+     */
+    private float[] avoid(float wantYaw, float wantPitch) {
+        var p = mc.player;
+        Vec3 vel = p.getDeltaMovement();
+        double speed = vel.length();
+        double look = Mth.clamp(speed * 30, 10, 60);
+        lookUsed = look;
+        double ahead = clearance(wantYaw, wantPitch, look, 7);
+        if (speed > 0.2) {
+            float velYaw = (float) Math.toDegrees(Math.atan2(-vel.x, vel.z));
+            float velPitch = (float) -Math.toDegrees(Math.atan2(vel.y, Math.hypot(vel.x, vel.z)));
+            ahead = Math.min(ahead, clearance(velYaw, velPitch, look, 7));
+        }
+        if (dodge != null && dodgeTicks > 0) {
+            dodgeTicks--;
+            // hold the chosen dodge a few ticks so it doesn't twitch between two gaps, unless it closes up
+            double c = clearance(dodge[0], dodge[1], look, 5);
+            if (c >= look * 0.6 && ahead < look) { pathClear = c; return dodge; }
+        }
+        if (ahead >= look) { dodge = null; pathClear = ahead; return new float[]{wantYaw, wantPitch}; }
+        float[] best = {wantYaw, -55};
+        double bestScore = -1e9, bestClear = 0;
+        for (float dy : YAW_FAN) {
+            for (float pt : PITCH_FAN) {
+                // steep climbs bleed speed: only offer them when there's speed or rockets to spend
+                if (pt <= -55 && speed < 1.0 && rockets() == 0) continue;
+                float yaw = wantYaw + dy;
+                double c = clearance(yaw, pt, look, 5);
+                double score = c / look * 100 - Math.abs(dy) * 0.25 - Math.abs(pt - wantPitch) * 0.08 + (pt < 0 ? 4 : 0);
+                if (score > bestScore) { bestScore = score; best = new float[]{yaw, pt}; bestClear = c; }
+            }
+        }
+        dodge = best;
+        dodgeTicks = 8;
+        pathClear = bestClear;
+        return best;
+    }
+
+    /** Smoothly turn toward the target (plus an offset, for orbiting) and to the pitch, dodging terrain; no rockets. */
+    private void steer(float pitch, float yawOffset, boolean avoid) {
         var p = mc.player;
         double dx = targetX.get() - p.getX(), dz = targetZ.get() - p.getZ();
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz)) + yawOffset;
         float max = turnSpeed.getFloat();
+        if (avoid && p.isFallFlying()) {
+            float[] go = avoid(yaw, pitch);
+            if (dodge != null) max = Math.max(max, 20); // dodging: turn faster than cruising comfort
+            yaw = go[0];
+            pitch = go[1];
+        } else {
+            dodge = null;
+            pathClear = Double.MAX_VALUE;
+        }
         float dYaw = Mth.clamp(Mth.wrapDegrees(yaw - p.getYRot()), -max, max);
         float dPitch = Mth.clamp(pitch - p.getXRot(), -max, max);
         p.setYRot(p.getYRot() + dYaw);

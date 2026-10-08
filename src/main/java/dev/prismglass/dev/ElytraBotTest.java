@@ -57,14 +57,23 @@ public final class ElytraBotTest {
         }
         if (t == 60) {
             if (mc.screen instanceof net.minecraft.client.gui.screens.PauseScreen) mc.setScreen(null);
+            boolean wall = Boolean.getBoolean("prismglass.ebwall");
             tx = mc.player.getX() + 600;
-            tz = mc.player.getZ() + 400;
+            tz = wall ? mc.player.getZ() : mc.player.getZ() + 400;
+            if (wall) {
+                // 61 wide stone wall up to build height 45 blocks ahead: impossible to climb over, so it has to go around
+                int x = (int) mc.player.getX() + 45, y = (int) mc.player.getY(), z = (int) mc.player.getZ();
+                run(s, String.format("fill %d %d %d %d %d %d stone", x, y - 6, z - 30, x, 319, z + 30));
+                log("wall at x=" + x + " z " + (z - 30) + ".." + (z + 30) + " up to y=319");
+            }
             hp0 = mc.player.getHealth();
             Prism.modules().get(ElytraBot.class).goTo(tx, tz);
             started = true;
             log(String.format("start at %.0f %.0f %.0f -> %.0f %.0f", mc.player.getX(), mc.player.getY(), mc.player.getZ(), tx, tz));
         }
         ElytraBot bot = Prism.modules().get(ElytraBot.class);
+        if (started && mc.player.horizontalCollision && mc.player.isFallFlying()) log(String.format("COLLISION at %.0f %.0f %.0f speed %.2f",
+            mc.player.getX(), mc.player.getY(), mc.player.getZ(), mc.player.getDeltaMovement().length()));
         if (started && t < 300 && t % 20 == 0) {
             var p = mc.player;
             log(String.format("dbg t=%d %s flying=%s ground=%s water=%s vel=%s pitch=%.1f yaw=%.1f rockets=%d sel=%d main=%s",

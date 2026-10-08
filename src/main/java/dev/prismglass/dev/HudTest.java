@@ -94,7 +94,22 @@ public final class HudTest {
         if (t == 262) { mc.setScreen(new dev.prismglass.gui.ClickGuiScreen()); }
         if (t == 266 && mc.screen instanceof dev.prismglass.gui.ClickGuiScreen g) g.debugMenu(3);
         if (t == 280) shot("prism-keybinds.png");
+        if (t == 284) {
+            // KillAura KB displacement guide on a tanky pig 3 blocks ahead
+            mc.setScreen(null);
+            mc.player.setYRot(0);
+            mc.player.setXRot(40);
+            mc.getConnection().sendCommand("summon pig ~ ~ ~3 {NoAI:1b,Health:1000f,attributes:[{id:\"minecraft:max_health\",base:1000}]}");
+        }
         if (t == 290) {
+            var ka = Prism.modules().get(dev.prismglass.module.combat.KillAura.class);
+            ka.players.set(false); ka.animals.set(true); ka.kbDisplace.set(true); ka.kbAngle.set(45.0); ka.kbLines.set(true);
+            ka.setEnabled(true);
+        }
+        if (t == 320) shot("prism-kb.png");
+        if (t == 330) {
+            var ka = Prism.modules().get(dev.prismglass.module.combat.KillAura.class);
+            ka.setEnabled(false); ka.kbDisplace.set(false); ka.animals.set(false); ka.players.set(true);
             Prism.modules().get(dev.prismglass.module.render.Waypoints.class).remove("Base");
             hud.layout.set(oldLayout);
             hud.listFormat.parse(oldFormat);
