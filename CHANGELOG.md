@@ -1,5 +1,11 @@
 # Prism Glass changelog
 
+## 1.4.4 - 2026-10-09
+
+### NowPlaying
+- The song and lyrics screens grow out of the part of the HUD box you clicked and shrink back into it when you close them (Esc twice skips the animation). Switching between Song and Lyrics resizes smoothly.
+- The Spotify link reads normally instead of %20s.
+
 ## 1.4.3 - 2026-10-09
 
 ### NowPlaying

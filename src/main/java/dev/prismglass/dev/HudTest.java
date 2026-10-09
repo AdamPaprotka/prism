@@ -111,10 +111,11 @@ public final class HudTest {
         if (t == 324) {
             var ka = Prism.modules().get(dev.prismglass.module.combat.KillAura.class);
             ka.setEnabled(false); ka.kbDisplace.set(false); ka.animals.set(false); ka.players.set(true);
-            mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.SONG));
+            mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.SONG, dev.prismglass.module.client.Hud.npCover));
         }
+        if (t == 325) shot("prism-np-opening.png"); // mid-animation: growing out of the cover
         if (t == 336) shot("prism-np-song.png");
-        if (t == 340) mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.LYRICS));
+        if (t == 340) mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.LYRICS, dev.prismglass.module.client.Hud.npText));
         if (t == 360) shot("prism-np-lyrics.png");
         if (t == 370) {
             mc.setScreen(null);

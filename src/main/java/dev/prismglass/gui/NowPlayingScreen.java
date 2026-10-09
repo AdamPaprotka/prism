@@ -35,10 +35,22 @@ public class NowPlayingScreen extends Screen {
     private final List<Runnable> buttonActions = new ArrayList<>();
     private String flash;
     private long flashAt;
+    /** The HUD element it opened from (grows out of it, shrinks back into it on close), the panel's eased rect. */
+    private final float[] from;
+    private float[] rect;
+    private long last;
+    private boolean closing;
 
-    public NowPlayingScreen(Page page) {
+    public NowPlayingScreen(Page page, float[] from) {
         super(Component.literal("Now playing"));
         this.page = page;
+        this.from = from;
+    }
+
+    @Override
+    public void onClose() {
+        if (closing) { minecraft.setScreen(null); return; } // second Esc: no waiting
+        closing = true;
     }
 
     @Override public boolean isPauseScreen() { return false; }
@@ -57,15 +69,34 @@ public class NowPlayingScreen extends Screen {
         int accent = theme.accent.color();
         float w = Math.min(page == Page.SONG ? 300 : 360, width - 32), h = page == Page.SONG ? Math.min(176, height - 48) : height - 48;
         float x = (width - w) / 2f, y = page == Page.SONG ? (height - h) / 2f : 24;
+        // the panel eases from where it was (at first: the HUD element clicked) to where it belongs; closing eases back
+        float[] goal = closing ? (from != null ? from : new float[]{x + w / 2 - 4, y + h / 2 - 4, 8, 8}) : new float[]{x, y, w, h};
+        long now = System.nanoTime();
+        float dt = last == 0 ? 0 : Mth.clamp((now - last) / 1e9f, 0, 0.05f);
+        last = now;
+        if (rect == null) rect = from != null ? from.clone() : new float[]{x + w * 0.1f, y + h * 0.1f, w * 0.8f, h * 0.8f};
+        float k = 1 - (float) Math.exp(-(closing ? 18 : 14) * dt), done = 0;
+        for (int i = 0; i < 4; i++) {
+            rect[i] += (goal[i] - rect[i]) * k;
+            done = Math.max(done, Math.abs(goal[i] - rect[i]));
+        }
+        if (closing && done < 1.5f) { minecraft.setScreen(null); return; }
+        // draw everything at its final layout, mapped onto the eased rect
+        ctx.pose().pushMatrix();
+        ctx.pose().translate(rect[0], rect[1]);
+        ctx.pose().scale(rect[2] / w, rect[3] / h);
+        ctx.pose().translate(-x, -y);
         Glass.panel(ctx, x, y, w, h, theme.panelStyle());
         buttonRects.clear();
         buttonActions.clear();
-        if (!NowPlaying.active()) {
-            ctx.text(font, "Nothing is playing", (int) x + 12, (int) y + 12, DIM, false);
-            return;
+        // contents only once the panel is most of the way there, so text doesn't smear while it zooms
+        float grown = Math.min(rect[2] / w, rect[3] / h);
+        if (grown > 0.7f) {
+            if (!NowPlaying.active()) ctx.text(font, "Nothing is playing", (int) x + 12, (int) y + 12, DIM, false);
+            else if (page == Page.SONG) song(ctx, x, y, w, h, mouseX, mouseY, accent);
+            else lyrics(ctx, x, y, w, h, mouseX, mouseY, accent);
         }
-        if (page == Page.SONG) song(ctx, x, y, w, h, mouseX, mouseY, accent);
-        else lyrics(ctx, x, y, w, h, mouseX, mouseY, accent);
+        ctx.pose().popMatrix();
     }
 
     private void button(GuiGraphicsExtractor ctx, String label, float bx, float by, float bw, int mouseX, int mouseY, Runnable action) {
@@ -112,7 +143,7 @@ public class NowPlayingScreen extends Screen {
             ctx.fill(barX, by + 3, barX + barW, by + 4, 0x40FFFFFF);
             ctx.fill(barX, by + 3, barX + (int) (barW * Mth.clamp((float) pos / dur, 0, 1)), by + 4, accent);
         }
-        ctx.text(font, font.plainSubstrByWidth(webLink().replace("https://", ""), (int) w - 24), ax, by + 14, 0xFF7FB8FF, false);
+        ctx.text(font, font.plainSubstrByWidth("open.spotify.com/search/" + searchQuery(), (int) w - 24), ax, by + 14, 0xFF7FB8FF, false);
         float bw = (w - 24 - 12) / 3, bY = y + h - 26;
         button(ctx, "Open in Spotify", x + 12, bY, bw, mouseX, mouseY,
             () -> net.minecraft.util.Util.getPlatform().openUri(URI.create("spotify:search:" + URLEncoder.encode(searchQuery(), StandardCharsets.UTF_8).replace("+", "%20"))));
@@ -179,6 +210,7 @@ public class NowPlayingScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (closing) return true;
         for (int i = 0; i < buttonRects.size(); i++) {
             float[] r = buttonRects.get(i);
             if (event.x() >= r[0] && event.x() < r[0] + r[2] && event.y() >= r[1] && event.y() < r[1] + r[3]) {

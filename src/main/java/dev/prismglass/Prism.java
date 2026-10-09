@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 
 public class Prism implements ClientModInitializer {
     public static final String NAME = "Prism";
-    public static final String VERSION = "1.4.3";
+    public static final String VERSION = "1.4.4";
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
 
     private static ModuleManager modules;

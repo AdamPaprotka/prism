@@ -20,7 +20,8 @@ public abstract class ChatScreenMixin {
         boolean onCover = cover != null && inside(cover, event.x(), event.y());
         boolean onText = text != null && inside(text, event.x(), event.y());
         if (!onCover && !onText) return;
-        Minecraft.getInstance().setScreen(new NowPlayingScreen(onCover ? NowPlayingScreen.Page.SONG : NowPlayingScreen.Page.LYRICS));
+        Minecraft.getInstance().setScreen(onCover ? new NowPlayingScreen(NowPlayingScreen.Page.SONG, cover.clone())
+            : new NowPlayingScreen(NowPlayingScreen.Page.LYRICS, text.clone()));
         cir.setReturnValue(true);
     }
 
