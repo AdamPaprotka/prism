@@ -49,6 +49,7 @@ public final class HudTest {
             oldLayout = hud.layout.get();
             oldFormat = hud.listFormat.get();
             hud.listFormat.parse("Brackets");
+            hud.lyricsTranslate.parse("Below"); // NowPlaying translation rows in the shots
             for (Class<? extends dev.prismglass.module.Module> c : java.util.List.of(dev.prismglass.module.world.Timer.class,
                 dev.prismglass.module.movement.NoSlow.class, dev.prismglass.module.render.Fullbright.class)) {
                 Prism.modules().get(c).setEnabled(true);
@@ -107,12 +108,20 @@ public final class HudTest {
             ka.setEnabled(true);
         }
         if (t == 320) shot("prism-kb.png");
-        if (t == 330) {
+        if (t == 324) {
             var ka = Prism.modules().get(dev.prismglass.module.combat.KillAura.class);
             ka.setEnabled(false); ka.kbDisplace.set(false); ka.animals.set(false); ka.players.set(true);
+            mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.SONG));
+        }
+        if (t == 336) shot("prism-np-song.png");
+        if (t == 340) mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.LYRICS));
+        if (t == 360) shot("prism-np-lyrics.png");
+        if (t == 370) {
+            mc.setScreen(null);
             Prism.modules().get(dev.prismglass.module.render.Waypoints.class).remove("Base");
             hud.layout.set(oldLayout);
             hud.listFormat.parse(oldFormat);
+            hud.lyricsTranslate.parse("Off");
             Prism.config().save();
             log("done");
             Runtime.getRuntime().halt(0);

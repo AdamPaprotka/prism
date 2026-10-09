@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 
 public class Prism implements ClientModInitializer {
     public static final String NAME = "Prism";
-    public static final String VERSION = "1.4.2";
+    public static final String VERSION = "1.4.3";
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
 
     private static ModuleManager modules;
@@ -178,7 +178,7 @@ public class Prism implements ClientModInitializer {
      */
     public static void renderHud(net.minecraft.client.gui.GuiGraphicsExtractor ctx, float delta) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.options.hideGui || modules == null) return; // leaving/respawning: no world for a frame
+        if (mc.player == null || mc.level == null || mc.options.hideGui || modules == null || mc.screen instanceof dev.prismglass.gui.NowPlayingScreen) return; // leaving/respawning: no world for a frame
         ctx.nextStratum();
         dev.prismglass.streamproof.Overlay.markGui();
         modules.onRender2D(ctx, delta);

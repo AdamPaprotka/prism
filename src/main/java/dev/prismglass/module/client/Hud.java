@@ -52,6 +52,8 @@ public class Hud extends Module {
     public final BoolSetting rainbowList = bool("RainbowList", true, "Rainbow accent bars in the list.");
     public final BoolSetting nowPlaying = bool("NowPlaying", true, "Spotify box at the top: cover + song or synced lyrics (Windows, Spotify app).");
     public final BoolSetting lyrics = bool("Lyrics", true, "NowPlaying: synced lyrics (from lrclib.net) instead of just the song name.");
+    public final ModeSetting lyricsTranslate = mode("LyricsTranslate", "Off", "NowPlaying: translate the lyrics. Below = translation under each line, Replace = only the translation.", "Off", "Below", "Replace");
+    public final ModeSetting lyricsLang = mode("LyricsLang", "English", "NowPlaying: language to translate the lyrics into.", AutoTranslate.languages());
     public final BoolSetting anyPlayer = bool("AnyPlayer", false, "NowPlaying: also other media players (browser, etc.) when Spotify isn't playing.");
     /** Dragged positions, "name:fx,fy;..." (edited with the HUD editor, hidden in the GUI). */
     public final TextSetting layout = text("Layout", "", "HUD element positions (drag them in the HUD editor).").visibleWhen(() -> false);
@@ -197,27 +199,86 @@ public class Hud extends Module {
 
     private float npWidth, npScroll = Float.NaN;
 
-    /** Cover on the left; on the right the song, or synced lyrics scrolling up (next = white, now = gray, past = dark). */
+    private static final float NP_MAX_TEXT = 340, NP_ROWS = 4, NP_LINE_H = 10;
+    /** Wrapped rows of every lyric line and the row each line starts on, for the current lyrics (cached per song). */
+    private Object npFor;
+    /** How many of each line's rows are the original text (the rest are its translation, drawn dimmer). */
+    private int[] npOrig;
+    private List<List<net.minecraft.util.FormattedCharSequence>> npRows;
+    private int[] npStart;
+    private float npLine = Float.NaN;
+    /** Where the NowPlaying cover and text were drawn last frame (x, y, w, h), null when hidden: clickable in chat. */
+    public static float[] npCover, npText;
+    private long npLast;
+
+    /**
+     * Cover on the left; on the right the song, or synced lyrics: always 4 rows, the line being sung on the second row
+     * (gray), what's next below it (white), what was just sung above (dark gray). Long lines wrap onto the next row
+     * and push the lines below down. Scrolling and colours ease over time.
+     */
     private void drawNowPlaying(GuiGraphicsExtractor ctx, Glass.Style style, ClickGui theme) {
         boolean live = dev.prismglass.manager.NowPlaying.active();
+        npCover = npText = null;
         if (!live && !editing) { npWidth = 0; return; }
+        boolean ad = live && dev.prismglass.manager.NowPlaying.ad;
         var font = mc.font;
         int sw = ctx.guiWidth(), sh = ctx.guiHeight();
-        float pad = 6, art = 32, lineH = 10, h = art + pad * 2;
+        float pad = 6, h = NP_ROWS * NP_LINE_H + pad * 2 + 2, art = h - pad * 2;
         long pos = dev.prismglass.manager.NowPlaying.position();
-        List<dev.prismglass.manager.NowPlaying.Line> lyr = lyrics.get() && live ? dev.prismglass.manager.NowPlaying.lyrics : List.of();
+        List<dev.prismglass.manager.NowPlaying.Line> lyr = lyrics.get() && live && !ad ? dev.prismglass.manager.NowPlaying.lyrics : List.of();
         boolean showLyrics = !lyr.isEmpty();
         int cur = showLyrics ? dev.prismglass.manager.NowPlaying.lineAt(pos) : -1;
-        String title = live ? dev.prismglass.manager.NowPlaying.title : "Now playing";
-        String artist = live ? dev.prismglass.manager.NowPlaying.artist : "Spotify";
+        String title = ad ? "Ad break" : live ? dev.prismglass.manager.NowPlaying.title : "Now playing";
+        String artist = ad ? "Spotify" : live ? dev.prismglass.manager.NowPlaying.artist : "Spotify";
 
-        // the box fits its text: as wide as the lines in view (or the song), eased so it doesn't snap
+        String trMode = lyricsTranslate.get();
+        if (showLyrics && !trMode.equals("Off")) dev.prismglass.manager.NowPlaying.translateLyrics(lyricsLang.get());
+        List<String> tr = trMode.equals("Off") ? List.of() : dev.prismglass.manager.NowPlaying.translated;
+        // wrap once per song (and translation), always at the max width, so rows don't jump when the box resizes
+        Object key = showLyrics ? List.of(lyr, tr, trMode) : null;
+        if (showLyrics && !key.equals(npFor)) {
+            npFor = key;
+            npRows = new ArrayList<>();
+            npStart = new int[lyr.size()];
+            npOrig = new int[lyr.size()];
+            int row = 0;
+            for (int i = 0; i < lyr.size(); i++) {
+                String text = lyr.get(i).text();
+                String trans = i < tr.size() ? tr.get(i).strip() : "";
+                boolean has = !trans.isEmpty() && !trans.equalsIgnoreCase(text);
+                // an empty lyric line (instrumental gap) is just a blank row
+                List<net.minecraft.util.FormattedCharSequence> rows = new ArrayList<>(text.isEmpty() ? List.of(net.minecraft.util.FormattedCharSequence.EMPTY)
+                    : font.split(net.minecraft.network.chat.Component.literal(has && trMode.equals("Replace") ? trans : text), (int) NP_MAX_TEXT));
+                npOrig[i] = rows.size();
+                if (has && trMode.equals("Below")) rows.addAll(font.split(net.minecraft.network.chat.Component.literal(trans), (int) NP_MAX_TEXT));
+                npRows.add(rows);
+                npStart[i] = row;
+                row += Math.max(1, rows.size());
+            }
+            npScroll = Float.NaN;
+            npLine = Float.NaN;
+        }
+
+        // the box fits its text: as wide as the rows in view (or the song), eased so it doesn't snap
         float textW = 0;
-        if (showLyrics) for (int i = Math.max(0, cur - 1); i <= Math.min(lyr.size() - 1, cur + 1); i++) textW = Math.max(textW, font.width(lyr.get(i).text()));
-        else textW = Math.max(font.width(title), font.width(artist));
-        textW = Mth.clamp(textW, 70, 260);
+        if (showLyrics) {
+            for (int i = Math.max(0, cur - 1); i <= Math.min(lyr.size() - 1, cur + 2); i++) {
+                var rows = npRows.get(i);
+                for (int j = 0; j < rows.size(); j++) {
+                    // room for the "<-" after the line being sung
+                    textW = Math.max(textW, font.width(rows.get(j)) + (i == cur && j == npOrig[i] - 1 ? font.width(" <-") : 0));
+                }
+            }
+        } else {
+            textW = Math.max(font.width(title), font.width(artist));
+        }
+        textW = Mth.clamp(textW, 70, NP_MAX_TEXT);
         float targetW = pad + art + 8 + textW + pad;
-        npWidth = npWidth == 0 ? targetW : npWidth + (targetW - npWidth) * 0.15f;
+        long now = System.nanoTime();
+        float dt = npLast == 0 ? 0 : Mth.clamp((now - npLast) / 1e9f, 0, 0.1f);
+        npLast = now;
+        float ease = 1 - (float) Math.exp(-3.5 * dt); // ~1 s to settle, same at any FPS
+        npWidth = npWidth == 0 ? targetW : npWidth + (targetW - npWidth) * ease;
         float w = npWidth;
         float[] p = place("NowPlaying", w, h, (sw - w) / 2f, 4, sw, sh);
         Glass.panel(ctx, p[0], p[1], w, h, style);
@@ -228,39 +289,61 @@ public class Hud extends Module {
                 dev.prismglass.manager.NowPlaying.coverW, dev.prismglass.manager.NowPlaying.coverH, dev.prismglass.manager.NowPlaying.coverW, dev.prismglass.manager.NowPlaying.coverH);
         } else {
             Glass.rounded(ctx, ax, ay, art, art, 4, 0x60303848, 0x60181C28);
-            ctx.text(font, "♪", ax + (int) art / 2 - font.width("♪") / 2, ay + 12, 0xFFAAAAAA, true);
         }
         float tx = ax + art + 8, tw = w - (tx - p[0]) - pad;
+        if (live) {
+            npCover = new float[]{ax, ay, art, art};
+            npText = new float[]{tx, p[1], tw, h};
+        }
+        float top = p[1] + pad + 1;
 
-        if (showLyrics) {
-            if (Float.isNaN(npScroll) || Math.abs(npScroll - cur) > 3) npScroll = cur;
-            else npScroll += (cur - npScroll) * 0.12f;
-            float cy = p[1] + h / 2 - 4;
-            ctx.enableScissor((int) tx, (int) p[1] + 3, (int) (tx + tw) + 2, (int) (p[1] + h) - 3);
-            for (int i = Math.max(0, cur - 3); i <= Math.min(lyr.size() - 1, cur + 5); i++) {
-                String line = lyr.get(i).text().isEmpty() ? "♪" : lyr.get(i).text();
-                if (font.width(line) > tw) line = font.plainSubstrByWidth(line, (int) tw - font.width("...")) + "...";
-                // r: where the line is in the song, tweened (0 = being sung, 1 = up next, -1 = just sung).
-                // The line being sung (gray) sits in the middle, up next (white) below; colours blend as they scroll up.
-                float r = i - npScroll;
+        // after the last line has had a normal line's time, the lyrics fade out slowly and the song fades in
+        float lyricAlpha = 1;
+        if (showLyrics && cur == lyr.size() - 1) {
+            long first = lyr.get(0).time(), last = lyr.get(lyr.size() - 1).time();
+            long gap = Mth.clamp(lyr.size() > 1 ? (last - first) / (lyr.size() - 1) : 4000, 2000, 6000);
+            lyricAlpha = Mth.clamp(1 - (pos - last - gap) / 4000f, 0, 1);
+        }
+        if (showLyrics && lyricAlpha < 1) drawSong(ctx, font, title, artist, tx, tw, top, 1 - lyricAlpha);
+        if (showLyrics && lyricAlpha > 0.01f) {
+            // view top (in rows): one row of what was just sung, then the line being sung on the second row
+            float target = (cur < 0 ? 0 : npStart[cur]) - 1;
+            if (Float.isNaN(npScroll) || Math.abs(npScroll - target) > 6) npScroll = target;
+            else npScroll += (target - npScroll) * ease;
+            if (Float.isNaN(npLine) || Math.abs(npLine - cur) > 3) npLine = cur;
+            else npLine += (cur - npLine) * ease;
+            float bandBottom = top + (NP_ROWS - 1) * NP_LINE_H;
+            ctx.enableScissor((int) tx, (int) p[1] + 2, (int) (tx + tw) + 2, (int) (p[1] + h) - 3);
+            for (int i = Math.max(0, cur - 4); i <= Math.min(lyr.size() - 1, cur + 6); i++) {
+                // r: where the line is in the song, eased (0 = being sung, 1 = up next, -1 = just sung)
+                float r = i - npLine;
                 int col = r >= 1 ? 0xFFFFFFFF : r >= 0 ? ColorUtil.lerp(0xFFAAAAAA, 0xFFFFFFFF, r) : ColorUtil.lerp(0xFFAAAAAA, 0xFF555555, Math.min(1, -r));
-                float d = r;
-                // lines beyond the ones right above/below the middle fade out instead of being cut at the box edge
-                float fade = Mth.clamp(2.1f - Math.abs(d), 0, 1);
-                if (fade <= 0.02f) continue;
-                col = ColorUtil.fade(col, fade);
-                ctx.pose().pushMatrix();
-                ctx.pose().translate(tx, cy + d * lineH);
-                ctx.text(font, line, 0, 0, col, r >= 0);
-                ctx.pose().popMatrix();
+                var rows = npRows.get(i);
+                for (int j = 0; j < rows.size(); j++) {
+                    float y = top + (npStart[i] + j - npScroll) * NP_LINE_H;
+                    // rows sliding past the 4-row band fade out instead of being cut in half
+                    float out = Math.max(top - y, y - bandBottom);
+                    float fade = Mth.clamp(1 - out / NP_LINE_H, 0, 1);
+                    fade *= lyricAlpha;
+                    if (fade <= 0.02f) continue;
+                    // translation rows (Below) a bit dimmer than their line
+                    int rc = ColorUtil.fade(col, fade * (j >= npOrig[i] ? 0.7f : 1f));
+                    ctx.pose().pushMatrix();
+                    ctx.pose().translate(tx, y);
+                    ctx.text(font, rows.get(j), 0, 0, rc, r >= 0);
+                    // "<-" after the end of the line being sung, fading in and out with it
+                    float mark = 1 - Math.min(1, Math.abs(r));
+                    if (j == npOrig[i] - 1 && mark > 0.02f) {
+                        ctx.text(font, " <-", font.width(rows.get(j)), 0, ColorUtil.fade(theme.accent.color(), fade * mark), true);
+                    }
+                    ctx.pose().popMatrix();
+                }
             }
             ctx.disableScissor();
-        } else {
+        } else if (!showLyrics) {
             npScroll = Float.NaN;
-            String t = font.width(title) > tw ? font.plainSubstrByWidth(title, (int) tw - font.width("...")) + "..." : title;
-            String a = font.width(artist) > tw ? font.plainSubstrByWidth(artist, (int) tw - font.width("...")) + "..." : artist;
-            ctx.text(font, t, (int) tx, (int) p[1] + 10, 0xFFFFFFFF, true);
-            ctx.text(font, a, (int) tx, (int) p[1] + 21, 0xFFAAAAAA, true);
+            npLine = Float.NaN;
+            drawSong(ctx, font, title, artist, tx, tw, top, 1);
         }
         long dur = dev.prismglass.manager.NowPlaying.duration();
         if (live && dur > 0) {
@@ -269,6 +352,16 @@ public class Hud extends Module {
             ctx.fill((int) tx, by, (int) (tx + tw), by + 1, 0x40FFFFFF);
             ctx.fill((int) tx, by, (int) (tx + tw * f), by + 1, theme.accent.color());
         }
+    }
+
+    /** Song title (up to 2 rows) and artist in the NowPlaying text area. */
+    private static void drawSong(GuiGraphicsExtractor ctx, net.minecraft.client.gui.Font font, String title, String artist, float tx, float tw, float top, float alpha) {
+        if (alpha <= 0.02f) return;
+        var titleRows = font.split(net.minecraft.network.chat.Component.literal(title), (int) Math.max(40, tw));
+        int ty = (int) top + 5;
+        for (int j = 0; j < Math.min(2, titleRows.size()); j++, ty += (int) NP_LINE_H) ctx.text(font, titleRows.get(j), (int) tx, ty, ColorUtil.fade(0xFFFFFFFF, alpha), true);
+        String a = font.width(artist) > tw ? font.plainSubstrByWidth(artist, (int) tw - font.width("...")) + "..." : artist;
+        ctx.text(font, a, (int) tx, ty + 1, ColorUtil.fade(0xFFAAAAAA, alpha), true);
     }
 
     private void drawWatermark(GuiGraphicsExtractor ctx, Glass.Style style, ClickGui theme) {

@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
 
 /**
  * Now playing from the Spotify desktop app, through the Windows media session (the same thing the volume flyout
@@ -48,6 +49,12 @@ public final class NowPlaying {
     public static volatile String title = "", artist = "", album = "";
     private static volatile long duration, posAt, posTime;
     private static volatile boolean playing, fromSpotify;
+    /** A Spotify Free ad is playing (no lyrics or cover lookups for those). */
+    public static volatile boolean ad;
+    /** Lyric translations, one per lyric line (empty until fetched / when off), and what they were made for. */
+    public static volatile List<String> translated = List.of();
+    private static String translatedKey = "";
+
     /** Synced lyric lines (empty: none found / still loading). */
     public static volatile List<Line> lyrics = List.of();
     public static volatile boolean lyricsLoading;
@@ -157,7 +164,11 @@ public final class NowPlaying {
             hasCover = false;
             coverFromSession = false;
             int gen = ++generation;
-            if (!t.isEmpty()) {
+            // Spotify Free ads come through the media session as "Advertisement" / "Spotify", or a brand with no artist
+            // or album and a short length
+            ad = fromSpotify && (t.equalsIgnoreCase("Advertisement") || t.equalsIgnoreCase("Spotify") || a.isBlank()
+                || al.isBlank() && dur > 0 && dur <= 65_000);
+            if (!t.isEmpty() && !ad) {
                 fetchLyrics(gen, t, a, al, dur);
                 fetchCover(gen, t, a);
             }
@@ -192,6 +203,72 @@ public final class NowPlaying {
         });
     }
 
+    /**
+     * Translate the current lyrics into this language once per song (AutoTranslate's endpoint). Lines go in batches
+     * joined by line breaks, which the translator keeps; a batch that comes back with a different line count is dropped.
+     */
+    public static void translateLyrics(String language) {
+        List<Line> l = lyrics;
+        String key = generation + "|" + language + "|" + l.size();
+        if (l.isEmpty() || key.equals(translatedKey)) return;
+        translatedKey = key;
+        translated = List.of();
+        // translations are kept on disk per song and language: a replay never asks the translator again
+        Path cache = translationFile(language, l.size());
+        try {
+            if (Files.isRegularFile(cache)) {
+                List<String> saved = List.of(Files.readString(cache, StandardCharsets.UTF_8).split("\n", -1));
+                if (saved.size() == l.size()) { translated = saved; return; }
+            }
+        } catch (Exception ignored) {
+        }
+        // empty lines (instrumental gaps, the end marker) go as a placeholder: a batch ending in an empty line loses that
+        // line break in translation and the line counts stop matching
+        List<String> texts = l.stream().map(x -> x.text().isEmpty() ? "♪" : x.text()).toList();
+        List<java.util.concurrent.CompletableFuture<List<String>>> parts = new ArrayList<>();
+        for (int from = 0; from < texts.size(); ) {
+            int to = from, chars = 0;
+            while (to < texts.size() && (chars += texts.get(to).length() + 1) < 1500) to++;
+            if (to == from) to++;
+            List<String> batch = texts.subList(from, to);
+            parts.add(dev.prismglass.module.client.AutoTranslate.translateTo(String.join("\n", batch), language)
+                .thenApply(t -> {
+                    if (t == null) return null;
+                    List<String> out = java.util.Arrays.stream(t.split("\n", -1)).map(x -> x.strip().equals("♪") ? "" : x.strip()).toList();
+                    if (out.size() != batch.size()) Prism.LOG.warn("[nowplaying] translation came back with {} lines for {}", out.size(), batch.size());
+                    return out.size() == batch.size() ? out : null;
+                }));
+            from = to;
+        }
+        java.util.concurrent.CompletableFuture.allOf(parts.toArray(new java.util.concurrent.CompletableFuture[0])).whenComplete((v, err) -> {
+            if (!key.equals(translatedKey)) return;
+            List<String> all = new ArrayList<>();
+            for (var f : parts) {
+                List<String> part = f.getNow(null);
+                if (part == null) return;
+                all.addAll(part);
+            }
+            translated = all;
+            try {
+                Files.createDirectories(cache.getParent());
+                Files.writeString(cache, String.join("\n", all), StandardCharsets.UTF_8);
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    /** prism/translations/<hash of artist, title, language, line count>.txt */
+    private static Path translationFile(String language, int lines) {
+        String id;
+        try {
+            byte[] h = java.security.MessageDigest.getInstance("SHA-1").digest((artist + "|" + title + "|" + language + "|" + lines).getBytes(StandardCharsets.UTF_8));
+            id = java.util.HexFormat.of().formatHex(h, 0, 10);
+        } catch (Exception e) {
+            id = Integer.toHexString((artist + title + language).hashCode());
+        }
+        return mc.gameDirectory.toPath().resolve("prism").resolve("translations").resolve(id + ".txt");
+    }
+
     // ---- lyrics (LRCLIB) ----------------------------------------------------------------------------
 
     private static final Pattern LRC = Pattern.compile("\\[(\\d+):(\\d+(?:\\.\\d+)?)]\\s*(.*)");
@@ -200,6 +277,7 @@ public final class NowPlaying {
 
     private static void fetchLyrics(int gen, String t, String a, String al, long dur) {
         lyricsLoading = true;
+        if (TEMPO.matcher(t).find()) { tempoLyrics(gen, t, a, dur); return; }
         if (fromSpotify && !mxmDead) {
             // Musixmatch first (what Spotify itself shows); one lookup per title candidate, off-thread, one at a time
             MXM.execute(() -> {
@@ -216,6 +294,52 @@ public final class NowPlaying {
             return;
         }
         lrclib(gen, t, a, al, dur);
+    }
+
+    /** Slowed / sped up / nightcore versions (their lyrics only exist timed to the original). */
+    private static final Pattern TEMPO = Pattern.compile("(?i)\\b(slowed|sped\\s*up|speed\\s*up|nightcore|daycore)\\b");
+
+    /** The original song's title: "(slowed + reverb)", " - sped up", "[nightcore]" and the like taken off. */
+    static String baseTitle(String t) {
+        String words = "slowed|sped\\s*up|speed\\s*up|nightcore|daycore|reverb|8d";
+        return t.replaceAll("(?i)\\s*[(\\[][^)\\]]*\\b(" + words + ")\\b[^)\\]]*[)\\]]", "")
+            .replaceAll("(?i)\\s*[-\u2013|]\\s*(super\\s*)?(" + words + ")\\b.*$", "")
+            .replaceAll("(?i)\\s+(super\\s*)?(slowed|sped\\s*up|speed\\s*up|nightcore|daycore)(\\s*(\\+|and|&)\\s*reverb)?\\s*$", "")
+            .trim();
+    }
+
+    /** First search result with real synced lyrics, or null. */
+    private static JsonObject firstSynced(String body) {
+        if (body == null) return null;
+        for (JsonElement e : JsonParser.parseString(body).getAsJsonArray()) {
+            JsonObject o = e.getAsJsonObject();
+            if (!parse(o).isEmpty()) return o;
+        }
+        return null;
+    }
+
+    /**
+     * A slowed / sped up track: find the original (base title, with the artist, then without it since these are often
+     * uploaded by someone else) and stretch every timestamp by (this track's length / the original's length), so a
+     * 3:00 song slowed to 3:45 gets its lines 1.25x later.
+     */
+    private static void tempoLyrics(int gen, String t, String a, long dur) {
+        String base = baseTitle(t);
+        get("https://lrclib.net/api/search?track_name=" + q(base) + "&artist_name=" + q(a)).thenCompose(b -> {
+            JsonObject hit = firstSynced(b);
+            if (hit != null) return java.util.concurrent.CompletableFuture.completedFuture(hit);
+            return get("https://lrclib.net/api/search?track_name=" + q(base)).thenApply(NowPlaying::firstSynced);
+        }).whenComplete((hit, err) -> {
+            if (gen != generation) return;
+            List<Line> l = List.of();
+            if (hit != null) {
+                double orig = hit.has("duration") && !hit.get("duration").isJsonNull() ? hit.get("duration").getAsDouble() : 0;
+                double ratio = orig > 0 && dur > 0 ? Mth.clamp(dur / 1000.0 / orig, 0.5, 2.0) : 1;
+                l = parse(hit).stream().map(x -> new Line(Math.round(x.time() * ratio), x.text())).toList();
+            }
+            lyrics = l;
+            lyricsLoading = false;
+        });
     }
 
     private static void lrclib(int gen, String t, String a, String al, long dur) {

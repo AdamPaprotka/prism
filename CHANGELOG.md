@@ -1,5 +1,16 @@
 # Prism Glass changelog
 
+## 1.4.3 - 2026-10-09
+
+### NowPlaying
+- Always 4 rows of lyrics: the line being sung on the second row with " <-" after it, what's next below, what was just sung above. Long lines wrap onto the next row and push the rest down. Wider box (up to 340), slower and smoother scrolling (same speed at any FPS).
+- LyricsTranslate (Off / Below / Replace) + LyricsLang: translations under each line or instead of it. Translated once per song and saved, so replays never ask the translator again.
+- With chat open, click the cover for the song screen (big cover, artists, album, time, open in Spotify / copy link) or the lyrics for the whole sheet top to bottom (timestamps, translations, current line highlighted and followed).
+- Slowed / sped up / nightcore versions get the original song's lyrics with every timestamp stretched to match (your track's length / the original's), so they line up instead of running ahead or behind.
+- Spotify ads show as "Ad break" (no lyrics or cover lookups for them).
+- When the song is past its last lyric line, the lyrics fade out and the song name fades in.
+- No more music note placeholders.
+
 ## 1.4.2 - 2026-10-08
 
 ### Updater

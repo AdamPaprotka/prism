@@ -139,6 +139,13 @@ public class AutoTranslate extends Module {
 
     private static final java.util.regex.Pattern NAMED = java.util.regex.Pattern.compile("^<([^>]{1,32})> (.+)$", java.util.regex.Pattern.DOTALL);
 
+    /** Any-language text into the language with this display name ("English"...). Null on failure. Line breaks are kept. */
+    public static CompletableFuture<String> translateTo(String text, String languageName) {
+        return translate(text, "auto", LANGS.getOrDefault(languageName, "en")).thenApply(r -> r == null ? null : r.text());
+    }
+
+    public static String[] languages() { return names(false); }
+
     /** Dev test hook: translate a fixed sample sentence. */
     public static CompletableFuture<String> debugTranslate(String text, String tl) {
         return translate(text, "auto", tl).thenApply(r -> r == null ? "FAILED" : "[" + r.detected() + "] " + r.text());
