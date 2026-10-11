@@ -82,7 +82,7 @@ public class AboutScreen extends Screen {
         ClickGui theme = Prism.modules().get(ClickGui.class);
         float in = Math.min(1f, (System.currentTimeMillis() - openedAt) / 180f);
         List<String[]> rows = rows();
-        float w = Math.min(320, width - 32), h = 62 + rows.size() * 12 + 34;
+        float w = Math.min(320, width - 32), h = 62 + rows.size() * 12 + 56;
         float x = (width - w) / 2f, y = (height - h) / 2f + (1 - in) * 10;
         Glass.panel(ctx, x, y, w, h, theme.panelStyle());
 
@@ -112,14 +112,13 @@ public class AboutScreen extends Screen {
         // buttons
         buttonRects.clear();
         buttonActions.clear();
-        String[] labels = {"Changelog", "Copy info", "Open folder", dev.prismglass.manager.Updater.label()};
+        String[] labels = {"Changelog", "Copy info", "Open folder"};
         Runnable[] actions = {
             () -> minecraft.setScreen(new ChangelogScreen(this)),
             () -> { minecraft.keyboardHandler.setClipboard(report()); flash = "Copied"; flashAt = System.currentTimeMillis(); },
             () -> net.minecraft.util.Util.getPlatform().openPath(Prism.config().folder()),
-            dev.prismglass.manager.Updater::click,
         };
-        float gap = 6, btnW = (w - 28 - gap * 3) / 4, btnY = y + h - 26;
+        float gap = 6, btnW = (w - 28 - gap * 2) / 3, btnY = y + h - 48;
         for (int i = 0; i < labels.length; i++) {
             float btnX = x + 14 + i * (btnW + gap);
             boolean hover = mouseX >= btnX && mouseX < btnX + btnW && mouseY >= btnY && mouseY < btnY + 16;
@@ -129,6 +128,19 @@ public class AboutScreen extends Screen {
             buttonRects.add(new float[]{btnX, btnY, btnW, 16});
             buttonActions.add(actions[i]);
         }
+        // the update button gets its own full-width row: its labels ("Restart to update", "Downloading 45%") are long
+        var up = dev.prismglass.manager.Updater.state;
+        boolean avail = up == dev.prismglass.manager.Updater.State.AVAILABLE;
+        float ux = x + 14, uy = y + h - 26, uw = w - 28;
+        boolean hover = mouseX >= ux && mouseX < ux + uw && mouseY >= uy && mouseY < uy + 16;
+        Glass.rounded(ctx, ux, uy, uw, 16, 4, avail ? (hover ? 0x66FFFFFF : 0x44FFFFFF) : (hover ? 0x44FFFFFF : 0x26FFFFFF), hover ? 0x30FFFFFF : 0x14FFFFFF);
+        if (up == dev.prismglass.manager.Updater.State.DOWNLOADING) {
+            ctx.fill((int) ux + 2, (int) uy + 13, (int) (ux + 2 + (uw - 4) * dev.prismglass.manager.Updater.progress), (int) uy + 14, theme.accent.color());
+        }
+        String ul = dev.prismglass.manager.Updater.label();
+        ctx.text(font, ul, (int) (ux + (uw - font.width(ul)) / 2), (int) uy + 4, avail ? theme.accent.color() : TEXT, true);
+        buttonRects.add(new float[]{ux, uy, uw, 16});
+        buttonActions.add(dev.prismglass.manager.Updater::click);
     }
 
     /** Plain-text version of the screen for bug reports. */

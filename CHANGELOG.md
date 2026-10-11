@@ -1,5 +1,27 @@
 # Prism Glass changelog
 
+## 1.5.0 - 2026-10-11
+
+### Command tab completion
+- Type your prefix and part of a command (`.tog`, `.set crys`) and the same suggestion list as vanilla's /commands pops up: Tab, arrows or a click to pick. It knows every command and its arguments: module names, setting names, setting values (modes, true/false, keys), online players for `.friend add`, your friends for `.friend del`, profiles, waypoints.
+- The command's usage and description show above the chat box while you type; an unknown command shows in red.
+
+### PacketMine (Player)
+- Click a block once and it's mined in the background: keep fighting, look away, hold anything. Your best tool is swapped in at the end (Silent: only the server sees it), so the block breaks at full pickaxe speed while you hold a sword or a crystal.
+- Instant mode (vanilla / Paper / anarchy servers): the server finishes the block by itself. Strict mode (Grim / NCP): the stop packet goes out when the block is really done, with the tool swapped in a tick before.
+- Click more blocks to queue them (Queue). Rebreak mines a block again by itself when someone places it back (an enemy fixing their surround). The box grows and turns from red to green as it breaks.
+- Tested: obsidian with an Efficiency V netherite pickaxe in another slot breaks in 48 ticks (vanilla 43) in both modes while holding a stick.
+
+### AntiSurround (Combat)
+- Puts an end crystal into your enemy's surround slot so they can't place the block back: Broken mode only fills slots whose block was just mined out (AutoCity / PacketMine combo), Gaps fills every open slot. Only on obsidian/bedrock floors, skips crystals that would hurt you more than MaxSelfDamage. Mobs option for practising on hostile mobs. Uses the AntiCheat place range (not the shorter attack range).
+
+### BetterTooltips (Render)
+- Extra tooltip lines: exact durability (coloured), food hunger/saturation, shulker contents summary, how many of the item you're carrying, anvil uses, bees in a hive, map number, item id.
+- Ender chest preview: open your ender chest once and hovering an ender chest item shows what's inside, like ShulkerPeek.
+
+### About screen
+- The update button has its own full-width row (it used to squeeze in next to the other three and its text ran off it), highlighted when there's an update and with a progress bar while downloading.
+
 ## 1.4.4 - 2026-10-09
 
 ### NowPlaying

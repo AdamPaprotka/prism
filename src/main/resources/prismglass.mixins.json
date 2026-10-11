@@ -26,6 +26,7 @@
     "FireworkRocketEntityMixin",
     "ContainerScreenMixin",
     "ChatScreenMixin",
+    "CommandSuggestionsMixin",
     "ItemInHandRendererMixin",
     "LivingEntityRendererMixin",
     "LevelRendererMixin",

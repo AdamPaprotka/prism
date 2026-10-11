@@ -204,6 +204,122 @@ public final class CommandManager {
     public String getPrefix() { return prefix; }
     public void setPrefix(String p) { prefix = p; }
 
+    /** What the chat box should offer for {@code text} (the input up to the cursor): options replace text from {@code start}. */
+    public record Completion(int start, List<String> options, String usage, String description, boolean error) {}
+
+    private static final List<String> KEYS = new java.util.ArrayList<>(List.of("none", "mouse3", "mouse4", "mouse5",
+        "left.shift", "right.shift", "left.control", "right.control", "left.alt", "right.alt", "tab", "caps.lock", "grave.accent",
+        "insert", "delete", "home", "end", "page.up", "page.down", "up", "down", "left", "right", "backspace", "enter", "space"));
+    static {
+        for (char c = 'a'; c <= 'z'; c++) KEYS.add(String.valueOf(c));
+        for (char c = '0'; c <= '9'; c++) KEYS.add(String.valueOf(c));
+        for (int i = 1; i <= 12; i++) KEYS.add("f" + i);
+        for (int i = 0; i <= 9; i++) KEYS.add("keypad." + i);
+    }
+
+    /** @return null when the text isn't a Prism command. */
+    public Completion complete(String text) {
+        if (prefix.isEmpty() || !text.startsWith(prefix)) return null;
+        String body = text.substring(prefix.length());
+        int lastSpace = body.lastIndexOf(' ');
+        String partial = body.substring(lastSpace + 1);
+        int start = prefix.length() + lastSpace + 1;
+        String head = lastSpace < 0 ? "" : body.substring(0, lastSpace).trim();
+        String[] done = head.isEmpty() ? new String[0] : head.split("\\s+");
+        if (done.length == 0) {
+            // the command itself: real names first, aliases only once you've typed something
+            List<String> names = new java.util.ArrayList<>();
+            for (var e : commands.entrySet()) if (e.getKey().equals(e.getValue().name()) || !partial.isEmpty()) names.add(e.getKey());
+            Command exact = commands.get(partial.toLowerCase());
+            return new Completion(start, filter(names, partial), exact == null ? null : prefix + exact.usage(),
+                exact == null ? null : exact.description(), false);
+        }
+        Command c = commands.get(done[0].toLowerCase());
+        if (c == null) return new Completion(start, List.of(), "Unknown command " + done[0], null, true);
+        String[] args = Arrays.copyOfRange(done, 1, done.length);
+        List<String> options;
+        try { options = argOptions(c.name(), args); } catch (RuntimeException e) { options = List.of(); }
+        return new Completion(start, filter(options, partial), prefix + c.usage(), c.description(), false);
+    }
+
+    private List<String> argOptions(String cmd, String[] a) {
+        int i = a.length;
+        return switch (cmd) {
+            case "toggle", "settings", "reset", "drawn" -> i == 0 ? moduleNames() : List.of();
+            case "share" -> {
+                List<String> l = new java.util.ArrayList<>(moduleNames());
+                if (i == 0) l.add(0, "paste");
+                yield l;
+            }
+            case "bind" -> i == 0 ? moduleNames() : i == 1 ? KEYS : List.of();
+            case "set" -> {
+                if (i == 0) yield moduleNames();
+                Module m = Prism.modules().get(a[0]);
+                if (m == null) yield List.of();
+                if (i == 1) yield m.getSettings().stream().map(Setting::getName).toList();
+                Setting<?> s = m.getSetting(a[1]);
+                yield i == 2 && s != null ? settingValues(s) : List.of();
+            }
+            case "friend" -> {
+                if (i == 0) yield List.of("add", "del", "list", "clear");
+                if (i > 1) yield List.of();
+                yield switch (a[0].toLowerCase()) {
+                    case "add" -> playerNames().stream().filter(n -> !Prism.friends().isFriend(n)).toList();
+                    case "del", "remove" -> new java.util.ArrayList<>(Prism.friends().all());
+                    default -> List.of();
+                };
+            }
+            case "config" -> i == 0 ? List.of("save", "load", "list", "export", "import")
+                : i == 1 && List.of("save", "load", "export").contains(a[0].toLowerCase()) ? Prism.config().list() : List.of();
+            case "wp" -> {
+                if (i == 0) yield List.of("add", "del", "list", "clear");
+                if (i == 1 && (a[0].equalsIgnoreCase("del") || a[0].equalsIgnoreCase("remove")))
+                    yield Prism.modules().get(dev.prismglass.module.render.Waypoints.class).points().stream().map(p -> p.name()).toList();
+                yield List.of();
+            }
+            case "elytrabot" -> i == 0 ? List.of("stop") : List.of();
+            case "seed" -> i == 0 ? List.of("clear") : List.of();
+            default -> List.of();
+        };
+    }
+
+    private static List<String> moduleNames() {
+        return Prism.modules().all().stream().map(Module::getName).toList();
+    }
+
+    private List<String> playerNames() {
+        if (mc.getConnection() == null) return List.of();
+        String self = mc.player == null ? "" : mc.player.getGameProfile().name();
+        return mc.getConnection().getOnlinePlayers().stream().map(p -> p.getProfile().name()).filter(n -> !n.equals(self)).sorted().toList();
+    }
+
+    private static List<String> settingValues(Setting<?> s) {
+        if (s instanceof dev.prismglass.setting.BoolSetting) return List.of("true", "false");
+        if (s instanceof dev.prismglass.setting.ModeSetting m) return m.getModes();
+        if (s instanceof dev.prismglass.setting.KeySetting) return KEYS;
+        if (s instanceof ColorSetting) return List.of("rainbow", "#FFFFFFFF");
+        if (s instanceof dev.prismglass.setting.NumberSetting n) {
+            java.util.LinkedHashSet<String> v = new java.util.LinkedHashSet<>();
+            v.add(n.display());
+            v.add(new dev.prismglass.setting.NumberSetting("", "", n.getDefault(), n.getMin(), n.getMax(), n.getStep()).display());
+            return new java.util.ArrayList<>(v);
+        }
+        return List.of(s.display());
+    }
+
+    /** Case-insensitive: everything starting with the typed text, or (when nothing does) everything containing it.
+     *  Brigadier sorts the list alphabetically, so mixing both would bury the real matches. */
+    private static List<String> filter(List<String> options, String partial) {
+        String p = partial.toLowerCase();
+        List<String> starts = new java.util.ArrayList<>(), contains = new java.util.ArrayList<>();
+        for (String o : options) {
+            String l = o.toLowerCase();
+            if (l.startsWith(p)) starts.add(o);
+            else if (!p.isEmpty() && l.contains(p)) contains.add(o);
+        }
+        return starts.isEmpty() ? contains : starts;
+    }
+
     /** @return true if the message was a command and must not be sent to the server. */
     public boolean handle(String message) {
         if (!message.startsWith(prefix)) return false;

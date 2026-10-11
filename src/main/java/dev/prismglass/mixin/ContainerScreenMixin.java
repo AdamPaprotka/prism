@@ -18,6 +18,8 @@ public abstract class ContainerScreenMixin {
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void prism$shulkerPeek(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a, CallbackInfo ci) {
-        if (hoveredSlot != null && hoveredSlot.hasItem()) ShulkerPeek.draw(graphics, mouseX, mouseY, hoveredSlot.getItem());
+        if (hoveredSlot == null || !hoveredSlot.hasItem()) return;
+        ShulkerPeek.draw(graphics, mouseX, mouseY, hoveredSlot.getItem());
+        dev.prismglass.module.render.BetterTooltips.draw(graphics, mouseX, mouseY, hoveredSlot.getItem());
     }
 }

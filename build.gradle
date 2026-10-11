@@ -18,12 +18,13 @@ loom {
         client {
             if (project.hasProperty('audit')) vmArg '-Dprismglass.audit=true'
             // automated tests run in an invisible, unfocused window (StreamProof/fullscreen tests need a visible one)
-            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest']
+            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest']
                     .any { project.hasProperty(it) } && !project.hasProperty('visible')) vmArg '-Dprismglass.hidden=true'
             if (project.hasProperty('guitest')) vmArg '-Dprismglass.guitest=true'
             if (project.hasProperty('guiblocky')) vmArg '-Dprismglass.guiblocky=true'
             if (project.hasProperty('hudtest')) vmArg '-Dprismglass.hudtest=true'
             if (project.hasProperty('pearltest')) vmArg '-Dprismglass.pearltest=true'
+            if (project.hasProperty('minetest')) vmArg '-Dprismglass.minetest=true'
             if (project.hasProperty('rconcmds')) vmArg '-Dprismglass.rconcmds=true'
             if (project.hasProperty('acpreset')) vmArg "-Dprismglass.acpreset=${project.property('acpreset')}"
             if (project.hasProperty('combattest')) vmArg '-Dprismglass.combattest=true'
