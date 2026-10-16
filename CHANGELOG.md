@@ -1,5 +1,37 @@
 # Prism Glass changelog
 
+## 1.6.0 - 2026-10-16
+
+### StaffWatcher (Client)
+- Tells you when staff are watching you: a totem pop animation with the staff member's head instead of the totem (plus totem particles, a ping and a red chat line).
+- Staff = names on your staff list (`.staff add/del/list/clear`, tab completes online names), a staff word in their tab-list rank or team prefix (`[Admin]`, `[Sr.Mod]`, `[Helper]`... editable RankWords), anyone seen in spectator, and anyone caught vanishing.
+- Watching = a staff player keeps their crosshair on you (LookAngle, LookTime, Range, ThroughWalls), or a player right next to you switches to spectator (servers stop sending spectators to you, so that's how spectating someone starts). Cooldown per person, NearAlert when staff come close, OnlineAlert lists staff online when you join and when they join. The HUD shows how many are online and "watched" while someone is looking.
+- AntiVanish: someone leaves the tab list with no leave message = vanished (only trusted once the server has shown a real leave message; always reported when it happens right next to you); someone appears with no join message = unvanished; and the Probe asks the server to tab-complete `/msg ` every few seconds - names it knows that aren't in your tab list are online but vanished. Paper filters vanilla command completion for hidden players, so try a plugin command in ProbeCommand on those servers.
+- With StreamProof on the head pop is skipped (it would show on stream); the alert goes to the hidden toasts instead.
+- Tested with fake players fed through the real tab-list packet handler: rank/list detection, looking, cooldown, spectator switch, leave with and without a message, unvanish, probe (12/12).
+
+### BookBot (World)
+- Writes every empty book and quill you carry: one letter repeated, a word repeated, your own text, or random letters. Pages (1-100), characters per page (1-1024), optional signing with a title and #1, #2... numbering, delay, count. Books in the main inventory are moved to a free hotbar slot first. Stays inside the vanilla limits, which the server enforces anyway.
+
+### Dupes (Anarchy)
+- ItemFrameDupe: puts the held item into the closest item frame and punches it out again, over and over (optional rotations first, refills your hand). Only duplicates on servers running a frame-dupe plugin; vanilla/Paper just give the item back.
+- ShulkerDupe: open a placed shulker box, the module mines it and shift-clicks everything out in the same tick. Only works on servers that still accept clicks on a broken box's menu; vanilla 26.1.2 rejects them (tested: no duplication).
+- SpamDupe + `.spamdupe [seconds] | stop`: for servers that have a /dupe command. Dupes what you're holding until your inventory is full (works out the N for you), throws everything straight up except one item, and repeats. Runs for the item pickup delay by default (2 s in vanilla) and always finishes the cycle it's on, so you end up holding one. Command template (`dupe {n}`), whether N counts stacks or items, MaxN, cycle delay, throws per tick, and a safety stop when too many items are lying around you. Tested with `give` standing in for /dupe: 3 cycles in 2 s, ~6,650 items thrown, other items untouched.
+- XCarry (Player): keeps items in the 2x2 crafting grid as 4 extra slots. Turning it off puts them back in your inventory; logging out with items in the grid drops them where you logged out.
+
+### Staircase (World)
+- Builds a staircase in the direction you face. Up climbs one block per step into the air: it sneaks to the edge of the step you're on to place the support, puts the step on top, jumps up and repeats. Down goes one block lower per step and digs it into the ground/hills. Both clear 3 blocks of headroom (digging through whatever is in the way with your best tool) and walk along as they go. Length (0 = endless), block type (any / cobblestone / obsidian / netherrack), Dig, Walk, LockYaw. Down in open air needs AllowAirPlace in AntiCheat (there's nothing to click against), it tells you instead of walking off.
+- Tested: 8 steps up through a stone ceiling, 8 steps down into a stone hill.
+
+### StorageHover (Render)
+- Look at any chest, barrel, shulker box, hopper, furnace, ender chest... and a glass card shows: type (double chests too), capacity (slots and max items) and its full size. Open it once and it also shows used/free slots, item count, the top items, the item grid and the size of what's in it, from then on without opening.
+- Sizes are the real data size of the items (the NBT a chest saves, same counting as Meteor's byte-size tooltip): `Size: 1.26K Bits, 157 Bytes, 0.153 KiloBytes, 0.00015 MegaBytes, 0.000000146 GigaBytes`. Bits and Bytes are shortened with K/M/B/T, 1 KiloByte = 1024 Bytes.
+- Servers never send a chest's items until it's opened, so remembered contents are from the last time you (this session) opened it.
+
+### ClickGUI
+- PlayerHat (Config menu): the "China hat" cosmetic, a see-through shaded cone floating over your head (F5), optionally on other players too. Takes Prism's accent colour by default (follows your theme, rainbow accents run round the brim); HatPrismColor off = your own HatColor. HatOpacity, HatSize, HatSpin. Only your own client draws it.
+- AutoWidth (on by default): every panel is as wide as its longest module name plus FreeSpace, so long names never touch the + marker. PanelWidth is now the minimum width. Panels that would overlap in your saved layout are pushed apart when the GUI opens.
+
 ## 1.5.0 - 2026-10-11
 
 ### Command tab completion

@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 
 public class Prism implements ClientModInitializer {
     public static final String NAME = "Prism";
-    public static final String VERSION = "1.5.0";
+    public static final String VERSION = "1.6.0";
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
 
     private static ModuleManager modules;
@@ -153,6 +153,8 @@ public class Prism implements ClientModInitializer {
         if (Boolean.getBoolean("prismglass.hudtest")) dev.prismglass.dev.HudTest.install();
         if (Boolean.getBoolean("prismglass.pearltest")) dev.prismglass.dev.PearlTest.install();
         if (Boolean.getBoolean("prismglass.minetest")) dev.prismglass.dev.MineTest.install();
+        if (Boolean.getBoolean("prismglass.dupetest")) dev.prismglass.dev.DupeTest.install();
+        if (Boolean.getBoolean("prismglass.stafftest")) dev.prismglass.dev.StaffTest.install();
         if (Boolean.getBoolean("prismglass.pflytest")) dev.prismglass.dev.PacketFlyTest.install();
         if (Boolean.getBoolean("prismglass.crystaltest")) dev.prismglass.dev.CrystalTest.install();
         if (Boolean.getBoolean("prismglass.elytrabottest")) dev.prismglass.dev.ElytraBotTest.install();
@@ -224,6 +226,7 @@ public class Prism implements ClientModInitializer {
         float delta = mc.getDeltaTracker().getGameTimeDeltaPartialTick(true);
         Render3D.begin(ctx);
         modules.onRender3D(ctx.poseStack(), delta);
+        dev.prismglass.gui.render.PlayerHat.render(delta);
         Render3D.end();
     }
 

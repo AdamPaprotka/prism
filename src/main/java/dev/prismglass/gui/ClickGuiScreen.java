@@ -49,18 +49,39 @@ public class ClickGuiScreen extends Screen {
         resetLayout();
     }
 
-    /** Panels side by side under the top bar, all open. */
+    /** Panels side by side under the top bar, all open, spaced by their own widths. */
     public static void resetLayout() {
-        int i = 0;
+        float x = 10;
         for (Category c : Category.values()) {
             PanelState p = PANELS.get(c);
-            p.x = 10 + i * 124;
+            p.x = x;
+            x += panelWidth(c) + 8;
             p.y = 46;
             p.scroll = 0;
             p.open = true;
             p.openAnim = 1f;
-            i++;
         }
+    }
+
+    /**
+     * Panel width: with AutoWidth the longest module name in the category (or the header's title + count)
+     * plus FreeSpace and the +/- expand marker, never below PanelWidth. Uses every module of the category,
+     * not the search results, so panels don't jump around while typing.
+     */
+    public static float panelWidth(Category cat) {
+        if (Prism.modules() == null) return 116;
+        ClickGui gui = Prism.modules().get(ClickGui.class);
+        float min = gui.panelWidth.getFloat();
+        if (!gui.autoWidth.get()) return min;
+        net.minecraft.client.gui.Font f = net.minecraft.client.Minecraft.getInstance().font;
+        if (f == null) return min;
+        int longest = 0;
+        for (Module m : Prism.modules().byCategory(cat)) longest = Math.max(longest, f.width(m.getName()) + 1); // +1: enabled names have a shadow
+        // 8 left padding, the expand marker sits 12 from the right edge
+        float names = 8 + longest + gui.freeSpace.getFloat() + 12;
+        int count = Prism.modules().byCategory(cat).size();
+        float header = 8 + f.width(cat.title) + 1 + 12 + f.width(count + "/" + count) + 8;
+        return Math.max(min, (float) Math.ceil(Math.max(names, header)));
     }
 
     // ---- per-frame state ---------------------------------------------------------------------
@@ -109,7 +130,27 @@ public class ClickGuiScreen extends Screen {
         theme = Prism.modules().get(ClickGui.class);
     }
 
-    @Override protected void init() { openedAt = System.currentTimeMillis(); }
+    @Override protected void init() {
+        openedAt = System.currentTimeMillis();
+        spreadPanels();
+    }
+
+    /**
+     * Panels in the same row that would overlap at their current (auto) widths are pushed right, so a
+     * layout saved with narrower panels stays readable. Panels you dragged apart are left alone.
+     */
+    private static void spreadPanels() {
+        List<Category> cats = new java.util.ArrayList<>(List.of(Category.values()));
+        cats.sort(java.util.Comparator.comparingDouble(c -> PANELS.get(c).x));
+        for (int i = 1; i < cats.size(); i++) {
+            PanelState ps = PANELS.get(cats.get(i));
+            for (int j = 0; j < i; j++) {
+                PanelState left = PANELS.get(cats.get(j));
+                if (Math.abs(left.y - ps.y) > 20) continue;
+                ps.x = Math.max(ps.x, left.x + panelWidth(cats.get(j)) + 8);
+            }
+        }
+    }
     @Override public boolean isPauseScreen() { return false; }
 
     // ---- rendering ---------------------------------------------------------------------------
@@ -612,7 +653,7 @@ public class ClickGuiScreen extends Screen {
         List<Module> modules = filtered(cat);
         if (!search.isEmpty() && modules.isEmpty()) return;
 
-        float w = theme.panelWidth.getFloat();
+        float w = panelWidth(cat);
         float target = ps.open ? 1f : 0f;
         ps.openAnim = approach(ps.openAnim, target, delta);
 
@@ -944,9 +985,9 @@ public class ClickGuiScreen extends Screen {
     public boolean mouseScrolled(double mx, double my, double horizontal, double vertical) {
         if (listEditing != null) { listScroll -= (float) vertical * 18; return true; }
         if (menu != Menu.NONE && inRect(mx, my, menuX, menuY, menuW, menuH)) { menuScroll -= (float) vertical * 18; return true; }
-        float w = theme.panelWidth.getFloat();
-        for (PanelState ps : PANELS.values()) {
-            if (mx >= ps.x && mx < ps.x + w && my >= ps.y) { ps.scroll -= (float) vertical * 18; return true; }
+        for (Category c : Category.values()) {
+            PanelState ps = PANELS.get(c);
+            if (mx >= ps.x && mx < ps.x + panelWidth(c) && my >= ps.y) { ps.scroll -= (float) vertical * 18; return true; }
         }
         return super.mouseScrolled(mx, my, horizontal, vertical);
     }

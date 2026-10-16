@@ -107,6 +107,16 @@ public final class Render3D {
         if (ColorUtil.alpha(outline) > 0) outline(lines(throughWalls), box, outline);
     }
 
+    /** One flat quad (4 corners in order) filled with a single colour. */
+    public static void quad(Vec3 a, Vec3 b, Vec3 c, Vec3 d, int color, boolean throughWalls) {
+        if (source == null) return;
+        VertexConsumer vc = fill(throughWalls);
+        v(vc, a.x, a.y, a.z, color);
+        v(vc, b.x, b.y, b.z, color);
+        v(vc, c.x, c.y, c.z, color);
+        v(vc, d.x, d.y, d.z, color);
+    }
+
     public static void plate(AABB box, int color, double height, boolean throughWalls) {
         if (source == null) return;
         VertexConsumer b = fill(throughWalls);

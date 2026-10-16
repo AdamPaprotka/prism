@@ -97,6 +97,13 @@ public final class MovementHooks {
             input.moveVector = vector(input.keyPresses);
         }
 
+        var stairs = Prism.modules().get(dev.prismglass.module.world.Staircase.class);
+        if (stairs != null && (stairs.wantsForward() || stairs.wantsBack())) {
+            Input p = input.keyPresses;
+            input.keyPresses = new Input(stairs.wantsForward(), stairs.wantsBack(), p.left(), p.right(), p.jump() || stairs.wantsJump(), p.shift() || stairs.wantsSneak(), p.sprint() && !stairs.wantsSneak());
+            input.moveVector = vector(input.keyPresses);
+        }
+
         applyLegitInputs(input);
         if (Prism.invGuard().holdingStill()) {
             // an inventory click is queued: stand still for it (Grim MultiActionsC)

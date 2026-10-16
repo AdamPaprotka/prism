@@ -168,6 +168,26 @@ public final class CommandManager {
             bot.goTo(x, z);
             ChatUtil.good(String.format("ElytraBot: flying to %.0f, %.0f", x, z));
         }, "eb"));
+        add(new Command("staff", "staff <add|del|list|clear> [name]", "StaffWatcher's staff list; list also shows who is online.", a -> {
+            var sw = Prism.modules().get(dev.prismglass.module.client.StaffWatcher.class);
+            switch (arg(a, 0).toLowerCase()) {
+                case "add" -> { sw.addStaff(arg(a, 1)); ChatUtil.good("Staff: added " + a[1]); }
+                case "del", "remove" -> { sw.removeStaff(arg(a, 1)); ChatUtil.good("Staff: removed " + a[1]); }
+                case "clear" -> { sw.staff.parse(""); ChatUtil.good("Staff list cleared"); }
+                default -> {
+                    ChatUtil.info("Staff list: §f" + (sw.staffList().isEmpty() ? "empty" : String.join(", ", sw.staffList())));
+                    if (!sw.isEnabled()) ChatUtil.info("StaffWatcher is off");
+                    else ChatUtil.info("Staff online: §f" + (sw.onlineStaff().isEmpty() ? "none" : String.join(", ", sw.onlineStaff())));
+                }
+            }
+        }));
+        add(new Command("spamdupe", "spamdupe [seconds] | stop", "Servers with /dupe: fill your inventory with what you hold, throw it up, repeat (default: for the item pickup delay).", a -> {
+            var dupe = Prism.modules().get(dev.prismglass.module.anarchy.SpamDupe.class);
+            if (arg(a, 0).equalsIgnoreCase("stop")) { dupe.setEnabled(false); return; }
+            double seconds = a.length > 0 ? Double.parseDouble(a[0]) : 0;
+            dupe.start(seconds);
+            if (dupe.isEnabled()) ChatUtil.good("SpamDupe: running for " + (seconds > 0 ? seconds : dupe.pickupDelay.get()) + "s");
+        }));
         add(new Command("seed", "seed <seed|clear>", "World seed for Xray seed mode.", a -> {
             var xray = Prism.modules().get(dev.prismglass.module.render.Xray.class);
             if (a.length == 0) { ChatUtil.info("Seed: §f" + (xray.seed.get().isEmpty() ? "none" : xray.seed.get())); return; }
@@ -279,6 +299,17 @@ public final class CommandManager {
             }
             case "elytrabot" -> i == 0 ? List.of("stop") : List.of();
             case "seed" -> i == 0 ? List.of("clear") : List.of();
+            case "staff" -> {
+                if (i == 0) yield List.of("add", "del", "list", "clear");
+                if (i > 1) yield List.of();
+                var sw = Prism.modules().get(dev.prismglass.module.client.StaffWatcher.class);
+                yield switch (a[0].toLowerCase()) {
+                    case "add" -> playerNames().stream().filter(n -> !sw.onList(n)).toList();
+                    case "del", "remove" -> sw.staffList();
+                    default -> List.of();
+                };
+            }
+            case "spamdupe" -> i == 0 ? List.of("stop", "2", "5", "10") : List.of();
             default -> List.of();
         };
     }

@@ -29,9 +29,21 @@ public class ClickGui extends Module {
     public final BoolSetting logo = bool("Logo", true, "Spinning prism in the GUI.");
     public final NumberSetting logoSpeed = num("LogoSpeed", 0.3, 0, 2, 0.05, "Prism revolutions per second.");
     public final NumberSetting animSpeed = num("AnimSpeed", 1.0, 0.2, 3, 0.1, "Animation speed.");
-    public final NumberSetting panelWidth = num("PanelWidth", 116, 90, 180, 1, "Width of category panels.");
+    public final BoolSetting autoWidth = bool("AutoWidth", true, "Size each panel to its longest module name (plus FreeSpace), so names never touch the edge.");
+    public final NumberSetting freeSpace = num("FreeSpace", 24, 0, 80, 1, "Empty space right of the longest module name.").visibleWhen(autoWidth::get);
+    public final NumberSetting panelWidth = num("PanelWidth", 116, 60, 180, 1, "Width of category panels (the minimum width with AutoWidth).");
     public final BoolSetting walk = bool("WalkInGui", true, "Keep moving (WASD/jump/sneak/sprint) while the ClickGUI is open.");
     public final BoolSetting descriptions = bool("Descriptions", true, "Show hovered module/setting descriptions.");
+
+    // ---- player hat (the "China hat" cone cosmetic) ----
+    public final BoolSetting playerHat = bool("PlayerHat", false, "A see-through cone hat over your head (seen in F5 / by your own client only).");
+    public final BoolSetting hatOthers = bool("HatOthers", false, "Put the hat on other players too.").visibleWhen(playerHat::get);
+    public final BoolSetting hatAccent = bool("HatPrismColor", true, "Use Prism's accent colour (follows the theme, rainbow accents included).").visibleWhen(playerHat::get);
+    public final NumberSetting hatAlpha = num("HatOpacity", 0.6, 0.1, 1, 0.05, "How solid the hat is.").visibleWhen(playerHat::get);
+    public final ColorSetting hatColor = color("HatColor", 0xFFFF6B6B, "Custom hat colour when HatPrismColor is off.").visibleWhen(() -> playerHat.get() && !hatAccent.get());
+    public final NumberSetting hatSize = num("HatSize", 1.0, 0.5, 2.0, 0.05, "Hat width.").visibleWhen(playerHat::get);
+    public final BoolSetting hatSpin = bool("HatSpin", true, "Slowly spinning shading around the cone.").visibleWhen(playerHat::get);
+
     public final BoolSetting blocky = bool("Blocky", false, "Fun: pixel-art GUI. Same layout and glass, built from blocks; text stays sharp.");
     public final NumberSetting blockSize = num("BlockSize", 2, 1, 4, 0.5, "Size of one Blocky pixel (GUI units).");
     /** Newest changelog version already announced (hidden). */
