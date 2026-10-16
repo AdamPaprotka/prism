@@ -1,5 +1,18 @@
 # Prism Glass changelog
 
+## 1.6.1 - 2026-10-16
+
+### StaffWatcher: AntiVanish upgrade
+- Hidden from TAB but still connected = vanished. Many vanish plugins only unlist you; Prism now compares the listed tab and spots it instantly, no leave-message guessing needed. `.staff list` marks them [hidden].
+- Left the tab list while their body is still standing in the world = vanished.
+- Back in the tab after vanishing = "visible again".
+- Shard/server switches (4+ tab changes at once, or a new world) no longer look like everyone vanishing; tab entries younger than 1.5 s are ignored.
+- Probe now uses `minecraft:msg` (the vanilla command), which skips plugin /msg commands that hide vanished players. When it returns lots of off-tab names (the command lists the whole network), only known staff names count.
+- DonutStaff (on): DonutSMP's staff accounts count as your staff list. RankMarkers: star-marked ranks (Donut style) count as staff.
+- Invisible staff near you trigger an alert.
+- GhostSense: a chest/barrel/shulker opening, a door, a block placed or broken, or a player sound where no visible player or mob could have done it (not you, not redstone, not an explosion, not crops or piston farms). The first one is noted in chat; a second close by within 15 s is the alert, named when exactly one hidden staff member is known.
+- Tested: -Pstafftest 22/22.
+
 ## 1.6.0 - 2026-10-16
 
 ### StaffWatcher (Client)

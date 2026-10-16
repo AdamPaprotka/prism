@@ -58,9 +58,13 @@ public final class StaffTest {
 
     /** Tab-list update through the client's real packet handler. */
     private static void tabUpdate(EnumSet<ClientboundPlayerInfoUpdatePacket.Action> actions, String name, GameType mode, Component display) {
+        tabUpdate(actions, name, mode, display, true);
+    }
+
+    private static void tabUpdate(EnumSet<ClientboundPlayerInfoUpdatePacket.Action> actions, String name, GameType mode, Component display, boolean listed) {
         try {
             GameProfile profile = profiles.computeIfAbsent(name, n -> new GameProfile(id(n), n));
-            var entry = new ClientboundPlayerInfoUpdatePacket.Entry(profile.id(), profile, true, 20, mode, display, true, 0, null);
+            var entry = new ClientboundPlayerInfoUpdatePacket.Entry(profile.id(), profile, listed, 20, mode, display, true, 0, null);
             var packet = new ClientboundPlayerInfoUpdatePacket(actions, List.of());
             var f = ClientboundPlayerInfoUpdatePacket.class.getDeclaredField("entries");
             f.setAccessible(true);
@@ -76,9 +80,21 @@ public final class StaffTest {
             ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME), name, GameType.SURVIVAL, display);
     }
 
-    private static void removeTab(String name) {
-        mc.getConnection().handlePlayerInfoRemove(new ClientboundPlayerInfoRemovePacket(List.of(id(name))));
+    private static void removeTab(String... names) {
+        List<UUID> ids = new ArrayList<>();
+        for (String n : names) ids.add(id(n));
+        mc.getConnection().handlePlayerInfoRemove(new ClientboundPlayerInfoRemovePacket(ids));
     }
+
+    private static String online(StaffWatcher sw) { return String.join(", ", sw.onlineStaff()).replaceAll("\u00A7.", ""); }
+
+    private static void sound(net.minecraft.sounds.SoundEvent ev, double x, double z) {
+        var p = new net.minecraft.network.protocol.game.ClientboundSoundPacket(net.minecraft.core.Holder.direct(ev),
+            net.minecraft.sounds.SoundSource.BLOCKS, x, mc.player.getY() + 0.5, z, 1f, 1f, 0L);
+        Prism.modules().get(StaffWatcher.class).onPacketReceive(new PacketEvent(p));
+    }
+
+    private static int popsBefore;
 
     /** A system chat line, through both the real handler (shows in chat) and Prism's packet event. */
     private static void chat(String text) {
@@ -143,7 +159,7 @@ public final class StaffTest {
             run(s, "tp @p 0.5 -60 0.5 0 0");
             sw.staff.parse("");
             sw.lookTime.parse("0.5");
-            sw.cooldown.parse("20");
+            sw.cooldown.parse("5");
             sw.probeInterval.parse("2");
             sw.setEnabled(true);
         }
@@ -176,7 +192,7 @@ public final class StaffTest {
         if (t == 100) check("staff-list player turning to look pops (pops=" + sw.pops + ", last=" + sw.lastPopName + ")", sw.pops == 2 && sw.lastPopName.equals("Watcher"));
         if (t == 110) facing.put("Steve2", false);
         if (t == 115) facing.put("Steve2", true);
-        if (t == 140) check("cooldown: Steve2 looking again within 20 s does not pop (pops=" + sw.pops + ")", sw.pops == 2);
+        if (t == 140) check("cooldown: Steve2 looking again within 5 s does not pop (pops=" + sw.pops + ")", sw.pops == 2);
 
         if (t == 150) { // Ghost goes into spectator right next to us: entity removed + game mode update
             despawn("Ghost");
@@ -220,7 +236,63 @@ public final class StaffTest {
             String online = String.join(", ", sw.onlineStaff()).replaceAll("§.", "");
             check("HiddenMod listed as vanished: " + online, online.contains("HiddenMod (vanished)"));
         }
+        // ---- unlisted / body left / shard burst / invisible / network probe / GhostSense ----
         if (t == 400) {
+            addTab("Hider", Component.literal("\u00A7b[Mod] Hider"));
+            addTab("Lurker", null);
+            addTab("Munkerlich", null);
+            addTab("Starry", Component.literal("\u00A7e\u2605 \u00A7fStarry"));
+            for (int i = 1; i <= 5; i++) addTab("Mass" + i, null);
+            spawn("Lurker", -3.5, -4.5, false);
+        }
+        if (t == 430) {
+            String o = online(sw);
+            log("online staff: " + o);
+            check("DonutSMP staff name + star rank + [Mod] detected", o.contains("Munkerlich (staff list)") && o.contains("Starry (rank \u2605)") && o.contains("Hider (mod)"));
+        }
+        if (t == 450) { // vanish that only unlists: still connected, hidden from TAB
+            popsBefore = sw.pops;
+            tabUpdate(EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED), "Hider", GameType.SURVIVAL, null, false);
+        }
+        if (t == 510) {
+            check("unlisted but connected = vanished (pops +" + (sw.pops - popsBefore) + ", last=" + sw.lastPopName + " " + sw.lastPopWhat + ")",
+                sw.pops == popsBefore + 1 && sw.lastPopName.equals("Hider") && sw.lastPopWhat.contains("still connected"));
+            check("Hider listed as [hidden]: " + online(sw), online(sw).contains("Hider [hidden] (mod)"));
+        }
+        if (t == 520) removeTab("Lurker"); // off the tab list, body stays in the world
+        if (t == 580) check("left the tab but body still here = vanished (last=" + sw.lastPopName + " " + sw.lastPopWhat + ")",
+            sw.pops == popsBefore + 2 && sw.lastPopName.equals("Lurker") && sw.lastPopWhat.contains("still here"));
+        if (t == 590) removeTab("Mass1", "Mass2", "Mass3", "Mass4", "Mass5"); // shard switch style burst
+        if (t == 650) check("burst of 5 tab removals = server switch, no alerts (pops=" + sw.pops + ")", sw.pops == popsBefore + 2);
+        if (t == 655) bots.get("Watcher").setInvisible(true);
+        if (t == 660) check("invisible staff near us (last=" + sw.lastPopName + " " + sw.lastPopWhat + ")",
+            sw.pops == popsBefore + 3 && sw.lastPopName.equals("Watcher") && sw.lastPopWhat.contains("invisible"));
+        if (t == 665) {
+            List<ClientboundCommandSuggestionsPacket.Entry> names = new ArrayList<>();
+            for (String n : List.of("Other1", "Other2", "Other3", "Other4", "Other5", "FluffyMaster07"))
+                names.add(new ClientboundCommandSuggestionsPacket.Entry(n, Optional.empty()));
+            sw.onPacketReceive(new PacketEvent(new ClientboundCommandSuggestionsPacket(StaffWatcher.PROBE_ID, 0, 0, names)));
+        }
+        if (t == 670) check("probe with 6 off-tab names (network) only flags the known staff name (last=" + sw.lastPopName + ", pops +" + (sw.pops - popsBefore) + ")",
+            sw.pops == popsBefore + 4 && sw.lastPopName.equals("FluffyMaster07"));
+        if (t == 680) sound(net.minecraft.sounds.SoundEvents.CHEST_OPEN, -10.5, 16.5);
+        if (t == 682) check("first ghost event is only noted (ghostEvents=" + sw.ghostEvents + ", pops +" + (sw.pops - popsBefore) + ")",
+            sw.ghostEvents == 1 && sw.pops == popsBefore + 4);
+        if (t == 685) {
+            var p = new net.minecraft.network.protocol.game.ClientboundLevelEventPacket(2001,
+                net.minecraft.core.BlockPos.containing(-12.5, mc.player.getY(), 18.5), net.minecraft.world.level.block.Block.getId(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()), false);
+            sw.onPacketReceive(new PacketEvent(p));
+        }
+        if (t == 690) check("second ghost event nearby = hidden player (named only when exactly one hidden staff member is known) (last=" + sw.lastPopName + " " + sw.lastPopWhat + ")",
+            sw.pops == popsBefore + 5 && sw.lastPopWhat.contains("hidden near you"));
+        if (t == 692) sound(net.minecraft.sounds.SoundEvents.CHEST_OPEN, 0.5, 11.5); // right next to visible Steve2
+        if (t == 695) {
+            var p = new net.minecraft.network.protocol.game.ClientboundLevelEventPacket(2001,
+                net.minecraft.core.BlockPos.containing(-20.5, mc.player.getY(), -10.5), net.minecraft.world.level.block.Block.getId(net.minecraft.world.level.block.Blocks.WHEAT.defaultBlockState()), false);
+            sw.onPacketReceive(new PacketEvent(p)); // a crop breaking: farms, not players
+        }
+        if (t == 700) check("chest next to a visible player and a crop break are ignored (ghostEvents=" + sw.ghostEvents + ")", sw.ghostEvents == 2);
+        if (t == 710) {
             log("RESULT passed=" + passed + " failed=" + failed);
             mc.stop();
         }
