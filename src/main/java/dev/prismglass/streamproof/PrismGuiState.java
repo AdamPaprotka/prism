@@ -10,6 +10,11 @@ public interface PrismGuiState {
 
     int prism$overlayStratum();
 
+    /** ClickGUI PopOut: starts a new stratum and marks it as the first hologram one (no-op if already marked). */
+    void prism$markHolo();
+
+    int prism$holoStratum();
+
     int prism$blurStratum();
 
     int prism$strataCount();

@@ -23,4 +23,24 @@ public abstract class MouseMixin {
         if (action == GLFW.GLFW_PRESS) Prism.modules().onKey(KeyUtil.MOUSE_OFFSET + button, true);
         else if (action == GLFW.GLFW_RELEASE) Prism.modules().onKey(KeyUtil.MOUSE_OFFSET + button, false);
     }
+
+    @org.spongepowered.asm.mixin.Unique private double prism$lastX, prism$lastY;
+    @org.spongepowered.asm.mixin.Unique private boolean prism$hasLast;
+
+    /** Hologram pop-out: a locked mouse steers your head, so the crosshair can sweep the floating panel. */
+    @Inject(method = "onMove", at = @At("HEAD"), cancellable = true)
+    private void prism$onMove(long window, double x, double y, CallbackInfo ci) {
+        Minecraft mc = Minecraft.getInstance();
+        if (window != mc.getWindow().handle() || mc.player == null || !dev.prismglass.gui.render.Holo.steering()) {
+            prism$hasLast = false;
+            return;
+        }
+        if (!prism$hasLast) { prism$lastX = x; prism$lastY = y; prism$hasLast = true; ci.cancel(); return; }
+        double dx = x - prism$lastX, dy = y - prism$lastY;
+        prism$lastX = x; prism$lastY = y;
+        double sens = mc.options.sensitivity().get() * 0.6 + 0.2;
+        double f = sens * sens * sens * 8.0; // vanilla turnPlayer's curve
+        mc.player.turn(dx * f * (mc.options.invertMouseX().get() ? -1 : 1), dy * f * (mc.options.invertMouseY().get() ? -1 : 1));
+        ci.cancel();
+    }
 }

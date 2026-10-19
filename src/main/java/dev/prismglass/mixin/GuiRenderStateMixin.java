@@ -33,6 +33,17 @@ public abstract class GuiRenderStateMixin implements PrismGuiState {
     }
 
     @Override public int prism$overlayStratum() { return prism$overlayStratum; }
+
+    @Unique private int prism$holoStratum = Integer.MAX_VALUE;
+
+    @Override
+    public void prism$markHolo() {
+        if (prism$holoStratum != Integer.MAX_VALUE) return;
+        nextStratum();
+        prism$holoStratum = strata.size() - 1;
+    }
+
+    @Override public int prism$holoStratum() { return prism$holoStratum; }
     @Override public int prism$blurStratum() { return firstStratumAfterBlur; }
     @Override public int prism$strataCount() { return strata.size(); }
 
@@ -54,5 +65,6 @@ public abstract class GuiRenderStateMixin implements PrismGuiState {
     @Inject(method = "reset", at = @At("TAIL"))
     private void prism$reset(CallbackInfo ci) {
         prism$overlayStratum = Integer.MAX_VALUE;
+        prism$holoStratum = Integer.MAX_VALUE;
     }
 }

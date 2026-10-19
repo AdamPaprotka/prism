@@ -36,6 +36,15 @@ import net.minecraft.world.phys.AABB;
  *   <li>Strict: START now, STOP once the block is really done, with the tool swapped in a tick before the STOP so
  *       anticheats that track the held item tick by tick (Grim FastBreak, NCP) see it in hand.</li>
  * </ul>
+ * Rebreak, when a mined block gets placed again:
+ * <ul>
+ *   <li>Instant: the server never forgets the position and start time of your last START (it only resets on the next
+ *       START), and a STOP for that position counts every tick since then. So the block is broken with a lone STOP
+ *       (best tool swapped in silently) the moment it reappears, as long as the time since START covers 70% of the
+ *       break time with that tool. Any START elsewhere (you mined something else) resets it: then it's a normal
+ *       rebreak.</li>
+ *   <li>Normal: mine it again from scratch.</li>
+ * </ul>
  */
 public class PacketMine extends Module {
     public final ModeSetting mode = mode("Mode", "Instant", "Instant lets the server finish the block itself; Strict sends the stop packet at the end (Grim/NCP).", "Instant", "Strict");
@@ -43,7 +52,7 @@ public class PacketMine extends Module {
     public final NumberSetting speed = num("Speed", 1, 0.7, 1, 0.05, "Finish at this part of the vanilla break time. 1 is safe everywhere; vanilla servers accept down to 0.7.");
     public final NumberSetting range = num("Range", 5.5, 3, 6, 0.5, "Give up on blocks farther than this.");
     public final NumberSetting queueSize = num("Queue", 3, 1, 8, 1, "Click more blocks to queue them; they're mined one after another.");
-    public final BoolSetting rebreak = bool("Rebreak", true, "When a mined block gets placed again (an enemy fixing their surround), mine it again by itself.");
+    public final ModeSetting rebreak = mode("Rebreak", "Instant", "When a mined block gets placed again (an enemy fixing their surround): Instant breaks it again at once with a lone stop packet, Normal mines it again from scratch.", "Instant", "Normal", "Off");
     public final ColorSetting startColor = color("StartColor", 0xFFFF5C7A, "Box colour when the block was just started.");
     public final ColorSetting doneColor = color("DoneColor", 0xFF5CFF9D, "Box colour when it's about to break.");
 
@@ -62,6 +71,15 @@ public class PacketMine extends Module {
     private BlockPos rebreakPos;
     private Direction rebreakFace;
     private int silentSlot = -1;
+    /** What the server remembers: the position of our last START and the tick it was sent (any START, ours or vanilla's). */
+    private BlockPos serverDestroyPos;
+    private int serverStartTick, clock;
+    /** Instant rebreak in flight: the tick its STOP went out (-1 = none), and how many tries it got. */
+    private int rebreakSentAt = -1, rebreakTries;
+    /** The tool was swapped in for an instant rebreak whose STOP hasn't gone out yet: keep it in hand. */
+    private boolean rebreakSwapped;
+    /** Instant rebreaks done (dev test). */
+    public int instantRebreaks;
 
     public PacketMine() { super("PacketMine", "Click once to mine blocks in the background; swaps the best tool in at the end.", Category.PLAYER); }
 
@@ -73,7 +91,18 @@ public class PacketMine extends Module {
         queue.clear();
         current = null;
         rebreakPos = null;
+        rebreakSentAt = -1;
     }
+
+    @Override
+    public void onPacketSend(dev.prismglass.event.PacketEvent e) {
+        if (e.packet instanceof ServerboundPlayerActionPacket p && p.getAction() == Action.START_DESTROY_BLOCK) {
+            serverDestroyPos = p.getPos().immutable();
+            serverStartTick = clock;
+        }
+    }
+
+    @Override public void onWorldJoin() { serverDestroyPos = null; rebreakPos = null; rebreakSentAt = -1; }
 
     /** Called from {@code MultiPlayerGameMode.startDestroyBlock}; returning true swallows vanilla's own mining. */
     public boolean onClick(BlockPos pos, Direction face) {
@@ -90,15 +119,28 @@ public class PacketMine extends Module {
     @Override
     public void onTick() {
         if (nullCheck()) return;
-        if (silentSlot != -1 && current == null) releaseSilent();
+        clock++;
+        if (silentSlot != -1 && current == null && rebreakSentAt == -1 && !rebreakSwapped) releaseSilent();
 
         if (current == null) {
             current = queue.poll();
-            if (current == null && rebreak.get() && rebreakPos != null && !BlockUtil.isReplaceable(rebreakPos)
-                && !BlockUtil.isUnbreakable(rebreakPos) && inRange(rebreakPos)) {
-                current = new Job(rebreakPos, rebreakFace);
+            boolean back = current == null && !rebreak.is("Off") && rebreakPos != null && !BlockUtil.isReplaceable(rebreakPos)
+                && !BlockUtil.isUnbreakable(rebreakPos) && inRange(rebreakPos);
+            if (back && rebreak.is("Instant") && rebreakPos.equals(serverDestroyPos) && rebreakTries < 3) {
+                instantRebreak();
+                return;
             }
-            if (current == null) return;
+            if (back) { current = new Job(rebreakPos, rebreakFace); rebreakSentAt = -1; rebreakTries = 0; rebreakSwapped = false; }
+            else if (rebreakSwapped && rebreakSentAt == -1) rebreakSwapped = false; // target gone before the STOP: drop the swap
+            if (current == null) {
+                if (rebreakSentAt != -1 && rebreakPos != null && BlockUtil.isReplaceable(rebreakPos)) { // it broke
+                    instantRebreaks++;
+                    rebreakSentAt = -1;
+                    rebreakTries = 0;
+                    releaseSilent();
+                }
+                return;
+            }
         }
         Job j = current;
 
@@ -163,6 +205,41 @@ public class PacketMine extends Module {
             j.swapSlot = -1;
             j.swapHeld = 0;
         }
+    }
+
+    /**
+     * The block we last mined is back: a lone STOP breaks it if (progress per tick with the best tool) x (ticks since
+     * the remembered START + 1) reaches 0.7. Waits until that's true, swaps the tool in a tick before the STOP (like
+     * Strict), then gives the server a few ticks before trying again; after 3 tries it falls back to a normal rebreak.
+     */
+    private void instantRebreak() {
+        if (rebreakSentAt != -1) {
+            if (clock - rebreakSentAt < 4) return; // waiting for the server's answer
+            rebreakSentAt = -1;
+            rebreakTries++;
+            releaseSilent();
+            return;
+        }
+        int tool = bestTool(BlockUtil.state(rebreakPos));
+        int slot = tool == -1 || swap.is("Off") ? mc.player.getInventory().getSelectedSlot() : tool;
+        int needed = ticksToBreak(rebreakPos, slot);
+        if (needed == Integer.MAX_VALUE) return;
+        // a tick or two of slack for the client/server tick offset
+        if (clock - serverStartTick + 1 < Math.ceil(needed * 0.7) + 2) return;
+        if (slot != mc.player.getInventory().getSelectedSlot() && silentSlot != slot) {
+            if (!Prism.guard().canSwitchSlot()) return;
+            if (swap.is("Silent")) { InvUtil.silentSwap(slot); silentSlot = slot; }
+            else InvUtil.swap(slot, true);
+            rebreakSwapped = true;
+            return; // STOP next tick, with the tool already in hand for the server
+        }
+        Direction face = BlockUtil.breakFace(rebreakPos);
+        if (face == null) face = rebreakFace;
+        if (face == null || !Prism.guard().canPlace()) return;
+        mc.player.connection.send(new ServerboundPlayerActionPacket(Action.STOP_DESTROY_BLOCK, rebreakPos, face));
+        mc.player.swing(InteractionHand.MAIN_HAND);
+        rebreakSentAt = clock;
+        rebreakSwapped = false;
     }
 
     private void finish() {
@@ -240,7 +317,7 @@ public class PacketMine extends Module {
             Render3D.box(new AABB(current.pos).deflate(0.5 * (1 - progress)), ColorUtil.withAlpha(c, 60), c, false);
         }
         for (Job j : queue) Render3D.box(new AABB(j.pos), 0, ColorUtil.withAlpha(startColor.color(), 120), false);
-        if (rebreak.get() && rebreakPos != null && current == null)
+        if (!rebreak.is("Off") && rebreakPos != null && current == null)
             Render3D.box(new AABB(rebreakPos), 0, ColorUtil.withAlpha(doneColor.color(), 90), false);
     }
 

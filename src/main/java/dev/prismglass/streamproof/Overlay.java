@@ -59,6 +59,10 @@ public final class Overlay {
     // dev test switches
     public static boolean debugForceVisible, debugIncludeInCapture;
     public static volatile String debugReadbackFile;
+    /** Dev: screenshot name for the overlay target, grabbed at present before it's cleared (no window needed). */
+    public static volatile String debugGrabName;
+    /** Hidden dev test windows never show the overlay window either (unless a test forces it). */
+    private static final boolean HIDDEN_TEST = Boolean.getBoolean("prismglass.hidden");
 
     private Overlay() {}
 
@@ -116,6 +120,11 @@ public final class Overlay {
         try {
             syncWindow();
             if (shown) blit();
+            String grab = debugGrabName;
+            if (grab != null) {
+                debugGrabName = null;
+                net.minecraft.client.Screenshot.grab(mc.gameDirectory, grab, target, 1, msg -> Prism.LOG.info("[overlay] {}", msg.getString()));
+            }
             clearForNextFrame();
         } catch (Throwable t) {
             fail("overlay error", t);
@@ -147,7 +156,7 @@ public final class Overlay {
         // owned by Minecraft's window (other apps cover it like the game), and also hidden whenever the game
         // isn't the focused window, so it can never show over anything else
         boolean visible = debugForceVisible
-            || (glfwGetWindowAttrib(main, GLFW_FOCUSED) == GLFW_TRUE && glfwGetWindowAttrib(main, GLFW_ICONIFIED) == GLFW_FALSE);
+            || (!HIDDEN_TEST && glfwGetWindowAttrib(main, GLFW_FOCUSED) == GLFW_TRUE && glfwGetWindowAttrib(main, GLFW_ICONIFIED) == GLFW_FALSE);
         int[] x = new int[1], y = new int[1], w = new int[1], h = new int[1];
         glfwGetWindowPos(main, x, y);
         glfwGetWindowSize(main, w, h);

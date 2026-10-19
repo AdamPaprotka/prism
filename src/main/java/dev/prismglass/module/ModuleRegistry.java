@@ -118,6 +118,7 @@ public final class ModuleRegistry {
             new dev.prismglass.module.world.AutoShearer(),
             new dev.prismglass.module.world.EChestFarmer(),
             new dev.prismglass.module.world.Nuker(),
+            new dev.prismglass.module.world.PluginScanner(),
             new dev.prismglass.module.world.HighwayBuilder(),
             new dev.prismglass.module.combat.BreachSwap(),
             new dev.prismglass.module.combat.AutoMace(),
@@ -129,6 +130,7 @@ public final class ModuleRegistry {
             new dev.prismglass.module.world.Staircase(),
             new dev.prismglass.module.client.StaffWatcher(),
             new dev.prismglass.module.world.StashFinder(),
+            new dev.prismglass.module.world.SusChunks(),
             new dev.prismglass.module.world.Timer()
         );
     }

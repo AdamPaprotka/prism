@@ -198,6 +198,137 @@ public final class CommandManager {
             if (!xray.isEnabled()) xray.toggle();
             ChatUtil.good("Seed set to " + dev.prismglass.module.render.Xray.parseSeed(value) + " - Xray is in Seed mode");
         }));
+        add(new Command("plugins", "plugins [probe|last]", "Scan the server's plugins (probe also runs /bukkit:plugins; last reprints the result).", a -> {
+            var scanner = Prism.modules().get(dev.prismglass.module.world.PluginScanner.class);
+            if (!scanner.isEnabled()) scanner.setEnabled(true);
+            String what = a.length > 0 ? a[0].toLowerCase() : "";
+            if (what.equals("last")) {
+                var list = scanner.plugins();
+                ChatUtil.info("Server brand: §f" + (scanner.brand() == null ? "unknown" : scanner.brand()));
+                ChatUtil.info(list.isEmpty() ? "No plugins detected yet" : "Plugins (" + list.size() + "): §f" + String.join(", ", list));
+                return;
+            }
+            scanner.scan(what.equals("probe"));
+            ChatUtil.info("Scanning plugins...");
+        }, "pl", "pluginscan"));
+        add(new Command("joinplayer", "joinplayer [name]", "A real second player: its own connection to this server, logged in as a cracked account (offline-mode servers).", a -> {
+            String name = a.length > 0 ? a[0] : Prism.fakePlayers().randomName();
+            String err = Prism.bots().join(name);
+            if (err != null) ChatUtil.error(err);
+            else ChatUtil.info("Bot §f" + name + "§7 is connecting" + (Prism.proxies().active() != null ? " through " + Prism.proxies().active().name() : ""));
+        }, "bot", "jp"));
+        add(new Command("leaveplayer", "leaveplayer <name|all>", "Disconnect a bot.", a -> {
+            if (a.length == 0 || a[0].equalsIgnoreCase("all")) {
+                if (Prism.bots().names().isEmpty()) ChatUtil.error("No bots online");
+                else Prism.bots().leaveAll();
+                return;
+            }
+            String err = Prism.bots().leave(a[0]);
+            if (err != null) ChatUtil.error(err);
+        }, "lp"));
+        add(new Command("switchplayer", "switchplayer <bot> [drop]", "Become that bot: your session switches to its cracked account and reconnects; a bot takes your old name unless you say drop.", a -> {
+            String err = Prism.bots().switchTo(arg(a, 0), !(a.length > 1 && a[1].equalsIgnoreCase("drop")));
+            if (err != null) ChatUtil.error(err);
+        }, "switch", "swp"));
+        add(new Command("sayplayer", "sayplayer <name|all> <message>", "Chat as a bot; a message starting with / runs as a command.", a -> {
+            String msg = String.join(" ", Arrays.copyOfRange(a, 1, Math.max(2, a.length))).trim();
+            if (msg.isEmpty()) throw new IllegalArgumentException("Missing message");
+            String err = Prism.bots().say(arg(a, 0), msg);
+            if (err != null) ChatUtil.error(err);
+        }, "sp", "botsay"));
+        add(new Command("fakeplayer", "fakeplayer [name]", "Client-side dummy (your skin and gear) next to you; nobody else sees it. Target practice.", a -> {
+            String name = a.length > 0 ? a[0] : Prism.fakePlayers().randomName();
+            String err = Prism.fakePlayers().join(name);
+            if (err != null) ChatUtil.error(err);
+        }, "fakejoin"));
+        add(new Command("fakeleave", "fakeleave [name]", "Remove a client-side dummy (no name = the last one).", a -> {
+            if (a.length == 0) {
+                String last = Prism.fakePlayers().leaveLast();
+                if (last == null) ChatUtil.error("No fake players around");
+                return;
+            }
+            String err = Prism.fakePlayers().leave(a[0]);
+            if (err != null) ChatUtil.error(err);
+        }));
+        add(new Command("account", "account [add|del|login|original|random|list] [name]", "Cracked accounts; no argument opens the Accounts screen.", a -> {
+            var am = Prism.accounts();
+            if (a.length == 0) { mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.AccountsScreen(null))); return; }
+            switch (a[0].toLowerCase()) {
+                case "add" -> ChatUtil.info(am.add(arg(a, 1)) ? "Added " + a[1] : "Invalid name or already saved");
+                case "del", "remove" -> ChatUtil.info(am.remove(arg(a, 1)) ? "Removed " + a[1] : "No account " + a[1]);
+                case "login", "use" -> {
+                    if (!am.login(arg(a, 1))) throw new IllegalArgumentException("Names are 1-16 letters, digits or _");
+                    ChatUtil.good("Logged in as " + a[1] + " (cracked)" + (mc.player != null ? ", applies when you next join a server" : ""));
+                }
+                case "original", "premium" -> { am.loginOriginal(); ChatUtil.good("Back to " + am.originalName()); }
+                case "random" -> {
+                    String n = dev.prismglass.manager.AccountManager.randomName();
+                    am.login(n);
+                    ChatUtil.good("Logged in as " + n + " (cracked)");
+                }
+                default -> {
+                    ChatUtil.info("Logged in as §f" + am.currentName() + " §7(" + (am.isOriginal() ? "original" : "cracked") + ")");
+                    ChatUtil.info("Accounts: §f" + (am.all().isEmpty() ? "none" : String.join(", ", am.all())));
+                }
+            }
+        }, "acc", "accounts", "login"));
+        add(new Command("proxy", "proxy [list|add <name> <host:port> [socks5|socks4|http] [user pass]|del <name>|use <name>|off|tor [start|stop|new]|ip|account <account> <proxy|none>]",
+            "Proxies for the server connection; no argument opens the Proxies screen. Tor starts tor.exe for you.", a -> {
+            var pm = Prism.proxies();
+            if (a.length == 0) { mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.ProxiesScreen(null))); return; }
+            switch (a[0].toLowerCase()) {
+                case "add" -> {
+                    pm.put(dev.prismglass.manager.ProxyManager.parse(arg(a, 1), arg(a, 2), a.length > 3 ? a[3] : null, a.length > 4 ? a[4] : null, a.length > 5 ? a[5] : null));
+                    ChatUtil.good("Added proxy " + a[1] + " - .proxy use " + a[1]);
+                }
+                case "del", "remove" -> ChatUtil.info(pm.remove(arg(a, 1)) ? "Removed " + a[1] : "No proxy " + a[1] + " (Tor can't be removed)");
+                case "use" -> {
+                    if (!pm.use(arg(a, 1))) throw new IllegalArgumentException("No proxy named " + a[1]);
+                    ChatUtil.good("Next connections go through " + pm.active().name() + (pm.active().isTor() ? " - " + pm.tor().status() : ""));
+                }
+                case "off", "direct" -> { pm.use(null); ChatUtil.good("No proxy: connecting directly"); }
+                case "tor" -> {
+                    var tor = pm.tor();
+                    switch (a.length > 1 ? a[1].toLowerCase() : "status") {
+                        case "start" -> ChatUtil.info(tor.start() ? "Tor starting (" + tor.status() + ")" : tor.status());
+                        case "stop" -> { tor.stop(); ChatUtil.info("Tor stopped"); }
+                        case "new", "newnym", "identity" -> ChatUtil.info(tor.newIdentity() ? "New Tor circuit requested" : tor.status());
+                        case "install", "guide" -> ChatUtil.info(dev.prismglass.manager.TorRunner.openInstallGuide() ? "Opened prism/torinstall.txt" : "Could not open the guide");
+                        default -> ChatUtil.info("Tor: §f" + tor.status() + " §7(" + tor.bootstrap() + "%), tor.exe " + (dev.prismglass.manager.TorRunner.findTor() == null ? "§cnot found" : "found"));
+                    }
+                }
+                case "ip" -> {
+                    var p = pm.active();
+                    ChatUtil.info(p == null ? "Checking your direct IP..." : "Checking the IP seen through " + p.name() + "...");
+                    Thread t = new Thread(() -> {
+                        try {
+                            String ip = dev.prismglass.manager.ProxyManager.publicIp(p);
+                            if (p == null) { mc.execute(() -> ChatUtil.info("Direct IP: §f" + ip)); return; }
+                            String direct;
+                            try { direct = dev.prismglass.manager.ProxyManager.publicIp(null); } catch (Exception e) { direct = null; }
+                            String note = direct == null ? "" : direct.equals(ip) ? " §c(same as without the proxy!)" : " §a(different from your real IP)";
+                            mc.execute(() -> ChatUtil.good("Through " + p.name() + ": §f" + ip + note));
+                        } catch (Exception e) {
+                            mc.execute(() -> ChatUtil.error("IP check failed: " + e.getMessage()));
+                        }
+                    }, "prism-ipcheck");
+                    t.setDaemon(true);
+                    t.start();
+                }
+                case "account" -> {
+                    String acc = arg(a, 1), px = arg(a, 2);
+                    if (px.equalsIgnoreCase("none")) { pm.setAccountProxy(acc, null); ChatUtil.good(acc + " uses no fixed proxy"); }
+                    else if (pm.get(px) == null) throw new IllegalArgumentException("No proxy named " + px);
+                    else { pm.setAccountProxy(acc, pm.get(px).name()); ChatUtil.good("Logging in as " + acc + " now switches to " + pm.get(px).name()); }
+                }
+                default -> {
+                    var act = pm.active();
+                    ChatUtil.info("Active: §f" + (act == null ? "none (direct)" : act.name() + " " + act.address()));
+                    for (var p : pm.all()) ChatUtil.info("  §f" + p.name() + " §7" + p.type().name().toLowerCase() + " " + p.address()
+                        + (p.isTor() ? " - " + pm.tor().status() : "") + (pm.accountProxy("") == null ? "" : ""));
+                }
+            }
+        }, "proxies", "px"));
         add(new Command("coords", "coords", "Copy your coordinates.", a -> {
             String c = String.format("%d %d %d", mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ());
             mc.keyboardHandler.setClipboard(c);
@@ -299,6 +430,26 @@ public final class CommandManager {
             }
             case "elytrabot" -> i == 0 ? List.of("stop") : List.of();
             case "seed" -> i == 0 ? List.of("clear") : List.of();
+            case "plugins" -> i == 0 ? List.of("probe", "last") : List.of();
+            case "leaveplayer" -> { if (i != 0) yield List.of(); List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
+            case "sayplayer" -> { if (i != 0) yield List.of("/"); List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
+            case "fakeleave" -> i == 0 ? Prism.fakePlayers().names() : List.of();
+            case "switchplayer" -> i == 0 ? Prism.bots().names() : i == 1 ? List.of("drop") : List.of();
+            case "proxy" -> {
+                if (i == 0) yield List.of("list", "add", "del", "use", "off", "tor", "ip", "account");
+                List<String> names = Prism.proxies().all().stream().map(p -> p.name()).toList();
+                if (i == 1 && (a[0].equalsIgnoreCase("use") || a[0].equalsIgnoreCase("del"))) yield names;
+                if (i == 1 && a[0].equalsIgnoreCase("tor")) yield List.of("start", "stop", "new", "install", "status");
+                if (i == 1 && a[0].equalsIgnoreCase("account")) yield Prism.accounts().all();
+                if (i == 2 && a[0].equalsIgnoreCase("account")) { List<String> l = new java.util.ArrayList<>(names); l.add("none"); yield l; }
+                if (i == 3 && a[0].equalsIgnoreCase("add")) yield List.of("socks5", "socks4", "http");
+                yield List.of();
+            }
+            case "account" -> {
+                if (i == 0) yield List.of("add", "del", "login", "original", "random", "list");
+                if (i == 1 && (a[0].equalsIgnoreCase("login") || a[0].equalsIgnoreCase("del"))) yield Prism.accounts().all();
+                yield List.of();
+            }
             case "staff" -> {
                 if (i == 0) yield List.of("add", "del", "list", "clear");
                 if (i > 1) yield List.of();

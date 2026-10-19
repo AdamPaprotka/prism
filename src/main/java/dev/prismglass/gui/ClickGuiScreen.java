@@ -102,6 +102,10 @@ public class ClickGuiScreen extends Screen {
     private Drag activeDrag;
     private KeySetting listening;
     private TextSetting editing;
+    /** Slider being typed into (right-click), what's typed so far, and whether the next key replaces it all. */
+    private NumberSetting numEditing;
+    private String numInput = "";
+    private boolean numFresh;
     private String search = "";
     private String tooltip;
     private long openedAt;
@@ -119,6 +123,9 @@ public class ClickGuiScreen extends Screen {
     private String status;
     private long statusAt;
     private int lastMouseX, lastMouseY;
+    // PopOut hologram: where the crosshair hits the panel (GUI coords), NaN when it misses; cursor locked by us
+    private double holoX = Double.NaN, holoY = Double.NaN;
+    private boolean holoLocked;
     private boolean cursorHidden; // StreamProof: OS cursor hidden, ours drawn in the hidden layer
     // search only takes keys after you click it, so binds work in the GUI; clears on Esc or after 5 s idle
     private static final long SEARCH_IDLE_MS = 5000;
@@ -132,6 +139,8 @@ public class ClickGuiScreen extends Screen {
 
     @Override protected void init() {
         openedAt = System.currentTimeMillis();
+        // placed once per opening (init also runs on window resize: the panel stays where it is)
+        if (theme.popOut.get() && !dev.prismglass.gui.render.Holo.anchored()) dev.prismglass.gui.render.Holo.anchor();
         spreadPanels();
     }
 
@@ -159,21 +168,29 @@ public class ClickGuiScreen extends Screen {
     public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         // no world (main menu): vanilla panorama background
         if (minecraft.level == null) { super.extractBackground(ctx, mouseX, mouseY, delta); return; }
-        if (theme.blur.get()) extractBlurredBackground(ctx);
+        boolean holo = dev.prismglass.gui.render.Holo.capturing();
+        if (theme.blur.get() && !holo) extractBlurredBackground(ctx); // PopOut: the world stays sharp around the panel
         dev.prismglass.streamproof.Overlay.markGui(); // StreamProof: the dim and everything after is hidden from capture
-        // liquid glass wants the world visible behind it, so only a light dim
-        if (theme.style.is("Liquid")) ctx.fillGradient(0, 0, width, height, 0x18101524, 0x40080A12);
-        else ctx.fillGradient(0, 0, width, height, 0x40101524, 0x70080A12);
+        dev.prismglass.gui.render.Holo.markGui(); // PopOut: the ClickGUI from here on goes to the hologram texture
+        // liquid glass wants the world visible behind it, so only a light dim.
+        // Hologram pop-out: skip the dim entirely so only the panels land on the floating quad (transparent elsewhere).
+        if (!holo) {
+            if (theme.style.is("Liquid")) ctx.fillGradient(0, 0, width, height, 0x18101524, 0x40080A12);
+            else ctx.fillGradient(0, 0, width, height, 0x40101524, 0x70080A12);
+        }
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         Glass.pixel = theme.blocky.get() ? theme.blockSize.getFloat() : 0;
+        Glass.flat = dev.prismglass.gui.render.Holo.capturing(); // PopOut: no screenshot refraction on the tilted panel
         try {
             extractGui(ctx, mouseX, mouseY, delta);
         } finally {
             Glass.pixel = 0; // HUD and other screens stay smooth
+            Glass.flat = false;
         }
+        if (dev.prismglass.gui.render.Holo.capturing() && !Double.isNaN(holoX)) drawHoloCursor(ctx);
     }
 
     private void extractGui(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
@@ -185,6 +202,18 @@ public class ClickGuiScreen extends Screen {
         Glass.captureBackground(ctx);
         hits.clear();
         tooltip = null;
+        // Hologram: the cursor is where your crosshair hits the panel, not the (locked) OS mouse
+        holoX = holoY = Double.NaN;
+        if (dev.prismglass.gui.render.Holo.capturing()) {
+            double[] cur = dev.prismglass.gui.render.Holo.cursorGui();
+            boolean on = cur != null && cur[0] >= 0 && cur[1] >= 0 && cur[0] < width && cur[1] < height;
+            holoX = on ? cur[0] : Double.NaN;
+            holoY = on ? cur[1] : Double.NaN;
+            mouseX = on ? (int) Math.floor(cur[0]) : -10000; // off the panel: nothing hovers
+            mouseY = on ? (int) Math.floor(cur[1]) : -10000;
+            // the locked mouse never reaches mouseDragged, so held slider/panel drags follow the crosshair here
+            if (on && (dragging != null || activeDrag != null)) applyDrag(holoX, holoY);
+        }
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         if ((searchFocused || !search.isEmpty()) && System.currentTimeMillis() - lastSearchInput > SEARCH_IDLE_MS) {
@@ -226,10 +255,11 @@ public class ClickGuiScreen extends Screen {
     // ---- Config | Profiles ------------------------------------------------------------------------
 
     private void drawConfigBar(GuiGraphicsExtractor ctx, float x, float y, float alpha) {
-        String[] labels = {"Config", "Profiles", "Keybinds", "HUD"};
-        Menu[] targets = {Menu.CONFIG, Menu.PROFILES, Menu.KEYBINDS, null}; // HUD opens the editor instead of a menu
+        String[] labels = {"Config", "Profiles", "Keybinds", "HUD", "Accounts"};
+        Menu[] targets = {Menu.CONFIG, Menu.PROFILES, Menu.KEYBINDS, null, null}; // HUD opens the editor, Accounts its screen
         String[] tips = {"Save, reload, layout and the ClickGUI look.", "Switch, create and delete profiles.",
-            "Keys for things that aren't modules: Inspect, Quick Pearl, waypoints...", "Drag HUD elements around with the mouse."};
+            "Keys for things that aren't modules: Inspect, Quick Pearl, waypoints...", "Drag HUD elements around with the mouse.",
+            "Cracked accounts: log in with any name for offline-mode servers."};
         float[] widths = new float[labels.length];
         float total = 0;
         for (int i = 0; i < labels.length; i++) total += widths[i] = font.width(labels[i]) + 20;
@@ -250,7 +280,9 @@ public class ClickGuiScreen extends Screen {
             }
             if (hover) tooltip = tips[i];
             ctx.text(font, labels[i], (int) (sx + 10), (int) (y + 8), active ? TEXT : DIM, active);
-            Click action = target != null ? (b, cx, cy) -> openMenu(menu == target ? Menu.NONE : target) : (b, cx, cy) -> openHudEditor();
+            boolean hudButton = labels[i].equals("HUD");
+            Click action = target != null ? (b, cx, cy) -> openMenu(menu == target ? Menu.NONE : target)
+                : hudButton ? (b, cx, cy) -> openHudEditor() : (b, cx, cy) -> minecraft.setScreen(new AccountsScreen(this));
             hits.add(new Hit(sx, y, sw, barH, action, null, tips[i]));
             if (i > 0) fill(ctx, (int) sx, (int) (y + 6), (int) sx + 1, (int) (y + barH - 6), FAINT);
             sx += sw;
@@ -424,6 +456,12 @@ public class ClickGuiScreen extends Screen {
     /** Dev GUI test only. */
     public String debugSearch() { return search; }
 
+    /** Dev holo test only: last drawn row rect {x, y, w, h} of a module or setting, and the hologram cursor. */
+    private static final boolean DEBUG_RECTS = Boolean.getBoolean("prismglass.holotest") || Boolean.getBoolean("prismglass.guitest");
+    private final Map<Object, float[]> debugRects = new java.util.HashMap<>();
+    public float[] debugRect(Object moduleOrSetting) { return debugRects.get(moduleOrSetting); }
+    public double[] debugHoloCursor() { return new double[]{holoX, holoY}; }
+
     /** Dev GUI test only: open a list editor with some typed text. */
     public void debugList(Module owner, ListSetting l, String input) { openList(owner, l); listInput = input; }
 
@@ -456,7 +494,7 @@ public class ClickGuiScreen extends Screen {
 
     /** True while a text field / key bind / list editor owns the keyboard (no walking then). */
     public boolean capturesKeys() {
-        return searchFocused || editing != null || listening != null || newProfile != null || listEditing != null;
+        return searchFocused || editing != null || numEditing != null || listening != null || newProfile != null || listEditing != null;
     }
 
     /** Dev GUI test only: 0 closes, 1 Config, 2 Profiles. */
@@ -706,6 +744,7 @@ public class ClickGuiScreen extends Screen {
         if (!m.getSettings().isEmpty()) ctx.text(font, arrow, (int) (x + w - 12), (int) (y + 4), FAINT, false);
 
         if (y + MODULE_H > clipTop && y < clipBottom) {
+            if (DEBUG_RECTS) debugRects.put(m, new float[]{x, y, w, MODULE_H});
             hits.add(new Hit(x, Math.max(y, clipTop), w, Math.min(y + MODULE_H, clipBottom) - Math.max(y, clipTop), (b, cx, cy) -> {
                 if (b == 0) m.toggle();
                 else if (b == 1) { if (!EXPANDED.remove(m)) EXPANDED.add(m); }
@@ -738,6 +777,7 @@ public class ClickGuiScreen extends Screen {
         boolean visible = y + h > clipTop && y < clipBottom;
         boolean hover = visible && mx >= x && mx < x + w && my >= Math.max(y, clipTop) && my < Math.min(y + h, clipBottom);
         if (hover) { fill(ctx, (int) x, (int) y, (int) (x + w), (int) (y + h), 0x12FFFFFF); tooltip = s.getDescription(); }
+        if (DEBUG_RECTS && visible) debugRects.put(s, new float[]{x, y, w, h});
         int ty = (int) (y + 3);
 
         switch (s) {
@@ -759,8 +799,18 @@ public class ClickGuiScreen extends Screen {
             }
             case NumberSetting n -> {
                 ctx.text(font, n.getName(), (int) x + 3, ty, DIM, false);
-                String v = n.display();
-                ctx.text(font, v, (int) (x + w - 3 - font.width(v)), ty, TEXT, false);
+                if (numEditing == n) {
+                    // typing a value: a small box with the text (selected while fresh) and a blinking cursor
+                    String v = numInput + (blink() ? "_" : " ");
+                    float vw = font.width(v) + 6, vx = x + w - 3 - vw + 3;
+                    Glass.rounded(ctx, vx - 1, ty - 2, vw, 11, 2.5f, 0x60000000, 0x50000000);
+                    if (numFresh && !numInput.isEmpty())
+                        ctx.fill((int) vx + 2, ty - 1, (int) vx + 2 + font.width(numInput), ty + 8, ColorUtil.withAlpha(theme.accent.color(), 110));
+                    ctx.text(font, v, (int) vx + 2, ty, 0xFFFFFFFF, false);
+                } else {
+                    String v = n.display();
+                    ctx.text(font, v, (int) (x + w - 3 - font.width(v)), ty, TEXT, false);
+                }
                 float bx = x + 3, bw = w - 6, by = y + 13;
                 float pct = (float) ((n.get() - n.getMin()) / (n.getMax() - n.getMin()));
                 Glass.rounded(ctx, bx, by, bw, 3, 1.5f, 0x40FFFFFF, 0x30FFFFFF);
@@ -770,7 +820,11 @@ public class ClickGuiScreen extends Screen {
                 if (visible) {
                     Drag drag = (dx, dy) -> n.set(n.getMin() + (n.getMax() - n.getMin()) * Mth.clamp((dx - bx) / bw, 0, 1));
                     hits.add(new Hit(x, Math.max(y, clipTop), w, Math.min(y + h, clipBottom) - Math.max(y, clipTop),
-                        (bt, cx, cy) -> { if (bt == 0) { activeDrag = drag; drag.drag(cx, cy); } else if (bt == 1) n.reset(); }, drag, s.getDescription()));
+                        (bt, cx, cy) -> {
+                            if (bt == 0) { activeDrag = drag; drag.drag(cx, cy); }
+                            else if (bt == 1) { numEditing = n; numInput = n.display(); numFresh = true; } // type a value
+                            else if (bt == 2) n.reset();
+                        }, drag, s.getDescription() + " (Right-click: type a value, middle-click: reset)"));
                 }
             }
             case ModeSetting md -> {
@@ -925,12 +979,31 @@ public class ClickGuiScreen extends Screen {
 
     private static boolean blink() { return (System.currentTimeMillis() / 500) % 2 == 0; }
 
+    /** Apply the typed slider value (comma or dot, clamped to the slider's range); junk input leaves it unchanged. */
+    private void commitNum() {
+        NumberSetting n = numEditing;
+        numEditing = null;
+        if (n == null) return;
+        try {
+            n.setExact(Double.parseDouble(numInput.trim().replace(',', '.')));
+        } catch (NumberFormatException ignored) {}
+    }
+
+    /** Dev GUI test hooks: start typing into a slider, and the text typed so far. */
+    public void debugTypeNumber(NumberSetting n) { numEditing = n; numInput = n.display(); numFresh = true; }
+    public String debugNumInput() { return numEditing == null ? null : numInput; }
+
     // ---- input -----------------------------------------------------------------------------------
 
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick) {
+        if (dev.prismglass.gui.render.Holo.live()) {
+            if (Double.isNaN(holoX)) return true; // crosshair is off the panel: click nothing
+            event = holoEvent(event);
+        }
         double mx = event.x(), my = event.y();
         int button = event.button();
+        if (numEditing != null) commitNum();
         if (listEditing != null) {
             // modal: only the editor's own hits (and the outside-click catcher) count
             for (int i = hits.size() - 1; i >= Math.max(0, popupHitStart); i--) {
@@ -963,7 +1036,12 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent event, double dx, double dy) {
-        double mx = event.x(), my = event.y();
+        if (dev.prismglass.gui.render.Holo.live()) return true; // drags follow the crosshair per frame instead
+        if (applyDrag(event.x(), event.y())) return true;
+        return super.mouseDragged(event, dx, dy);
+    }
+
+    private boolean applyDrag(double mx, double my) {
         if (dragging != null) {
             PanelState ps = PANELS.get(dragging);
             ps.x = Mth.clamp((float) mx - dragOffX, 0, width - 40);
@@ -971,18 +1049,29 @@ public class ClickGuiScreen extends Screen {
             return true;
         }
         if (activeDrag != null) { activeDrag.drag(mx, my); return true; }
-        return super.mouseDragged(event, dx, dy);
+        return false;
+    }
+
+    /** PopOut: the same click, but at the point the crosshair hits on the hologram. */
+    private net.minecraft.client.input.MouseButtonEvent holoEvent(net.minecraft.client.input.MouseButtonEvent event) {
+        return new net.minecraft.client.input.MouseButtonEvent(holoX, holoY, event.buttonInfo());
     }
 
     @Override
     public boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent event) {
         dragging = null;
         activeDrag = null;
+        if (dev.prismglass.gui.render.Holo.live() && !Double.isNaN(holoX)) event = holoEvent(event);
         return super.mouseReleased(event);
     }
 
     @Override
     public boolean mouseScrolled(double mx, double my, double horizontal, double vertical) {
+        if (dev.prismglass.gui.render.Holo.live()) {
+            if (Double.isNaN(holoX)) return true;
+            mx = holoX;
+            my = holoY;
+        }
         if (listEditing != null) { listScroll -= (float) vertical * 18; return true; }
         if (menu != Menu.NONE && inRect(mx, my, menuX, menuY, menuW, menuH)) { menuScroll -= (float) vertical * 18; return true; }
         for (Category c : Category.values()) {
@@ -1010,6 +1099,20 @@ public class ClickGuiScreen extends Screen {
             else {
                 listening.set(key == GLFW.GLFW_KEY_BACKSPACE || key == GLFW.GLFW_KEY_DELETE ? KeyUtil.NONE : key);
                 listening = null;
+            }
+            return true;
+        }
+        if (numEditing != null) {
+            switch (key) {
+                case GLFW.GLFW_KEY_BACKSPACE -> {
+                    if (numFresh) numInput = "";
+                    else if (!numInput.isEmpty()) numInput = numInput.substring(0, numInput.length() - 1);
+                    numFresh = false;
+                }
+                case GLFW.GLFW_KEY_DELETE -> { numInput = ""; numFresh = false; }
+                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> commitNum();
+                case GLFW.GLFW_KEY_ESCAPE -> numEditing = null; // cancel: value unchanged
+                default -> {}
             }
             return true;
         }
@@ -1051,7 +1154,7 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public boolean keyReleased(net.minecraft.client.input.KeyEvent event) {
-        if (!searchFocused && listening == null && editing == null && newProfile == null && listEditing == null) Prism.modules().onKey(event.key(), false);
+        if (!searchFocused && listening == null && editing == null && numEditing == null && newProfile == null && listEditing == null) Prism.modules().onKey(event.key(), false);
         return super.keyReleased(event);
     }
 
@@ -1061,6 +1164,13 @@ public class ClickGuiScreen extends Screen {
         char chr = (char) event.codepoint();
         if (listEditing != null) {
             if (!Character.isISOControl(chr) && chr != ',' && chr != ' ' && listInput.length() < 48) listInput += Character.toLowerCase(chr);
+            return true;
+        }
+        if (numEditing != null) {
+            if ((Character.isDigit(chr) || chr == '.' || chr == ',' || chr == '-') && numInput.length() < 16) {
+                numInput = numFresh ? String.valueOf(chr) : numInput + chr;
+                numFresh = false;
+            }
             return true;
         }
         if (editing != null) { editing.set(editing.get() + chr); return true; }
@@ -1078,6 +1188,7 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public void onClose() {
+        if (numEditing != null) commitNum();
         Prism.config().save();
         super.onClose();
     }
@@ -1091,11 +1202,33 @@ public class ClickGuiScreen extends Screen {
 
     private void updateCursor() {
         long handle = minecraft.getWindow().handle();
+        if (dev.prismglass.gui.render.Holo.capturing()) {
+            // head-steer (only while the panel is really drawn; otherwise the flat GUI keeps a free mouse): lock the cursor directly (NOT grabMouse(), which calls setScreen(null) and closes us);
+            // MouseMixin turns the head from the raw movement, and our arrow is drawn on the panel
+            if (GLFW.glfwGetInputMode(handle, GLFW.GLFW_CURSOR) != GLFW.GLFW_CURSOR_DISABLED)
+                GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+            cursorHidden = false;
+            holoLocked = true;
+            return;
+        }
+        releaseHoloLock(); // PopOut off, or the panel can't be drawn: flat GUI, free mouse
         if (dev.prismglass.streamproof.Overlay.wantsSoftCursor()) {
             if (GLFW.glfwGetInputMode(handle, GLFW.GLFW_CURSOR) != GLFW.GLFW_CURSOR_HIDDEN)
                 GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
             cursorHidden = true;
         } else restoreCursor();
+    }
+
+    /**
+     * Undo our PopOut lock. Vanilla thinks the mouse is released while a screen is open, so it won't do it for us when
+     * we close into another screen; closing into the game grabs it again right after.
+     */
+    private void releaseHoloLock() {
+        if (!holoLocked) return;
+        holoLocked = false;
+        var window = minecraft.getWindow();
+        GLFW.glfwSetInputMode(window.handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        GLFW.glfwSetCursorPos(window.handle(), window.getScreenWidth() / 2.0, window.getScreenHeight() / 2.0);
     }
 
     private void restoreCursor() {
@@ -1128,8 +1261,31 @@ public class ClickGuiScreen extends Screen {
         ctx.pose().popMatrix();
     }
 
+    /** Holo pop-out cursor: the arrow, drawn on the captured panel where your crosshair hits it. */
+    private void drawHoloCursor(GuiGraphicsExtractor ctx) {
+        float s = theme.cursorSize.getFloat() * 0.8f; // one ARROW char = s GUI pixels
+        int fill = theme.cursorColor.color();
+        ctx.nextStratum(); // above tooltips and menus
+        ctx.pose().pushMatrix();
+        ctx.pose().translate((float) holoX, (float) holoY);
+        ctx.pose().scale(s, s);
+        for (int row = 0; row < ARROW.length; row++) {
+            String line = ARROW[row];
+            for (int col = 0; col < line.length(); ) {
+                char c = line.charAt(col);
+                int end = col;
+                while (end < line.length() && line.charAt(end) == c) end++;
+                if (c != ' ') ctx.fill(col, row, end, row + 1, c == 'B' ? 0xFF000000 : fill);
+                col = end;
+            }
+        }
+        ctx.pose().popMatrix();
+    }
+
     @Override
     public void removed() {
+        dev.prismglass.gui.render.Holo.unanchor();
+        releaseHoloLock();
         restoreCursor();
         super.removed();
     }

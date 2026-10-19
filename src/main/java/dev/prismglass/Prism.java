@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 
 public class Prism implements ClientModInitializer {
     public static final String NAME = "Prism";
-    public static final String VERSION = "1.6.1";
+    public static final String VERSION = "1.6.2";
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
 
     private static ModuleManager modules;
@@ -37,6 +37,10 @@ public class Prism implements ClientModInitializer {
     private static dev.prismglass.manager.ReachBudget reachBudget;
     private static dev.prismglass.manager.InventoryGuard invGuard;
     private static dev.prismglass.manager.Humanizer humanizer;
+    private static dev.prismglass.manager.FakePlayers fakePlayers;
+    private static dev.prismglass.manager.AccountManager accounts;
+    private static dev.prismglass.manager.ProxyManager proxies;
+    private static dev.prismglass.manager.BotPlayers bots;
 
     private static int autosaveTicks;
     private static final boolean COMBAT_TEST = Boolean.getBoolean("prismglass.combattest");
@@ -53,6 +57,11 @@ public class Prism implements ClientModInitializer {
         reachBudget = new dev.prismglass.manager.ReachBudget();
         invGuard = new dev.prismglass.manager.InventoryGuard();
         humanizer = new dev.prismglass.manager.Humanizer();
+        fakePlayers = new dev.prismglass.manager.FakePlayers();
+        accounts = new dev.prismglass.manager.AccountManager();
+        proxies = new dev.prismglass.manager.ProxyManager();
+        bots = new dev.prismglass.manager.BotPlayers();
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> bots.tick());
 
         ModuleRegistry.registerAll(modules);
         anticheat = modules.get(AntiCheat.class);
@@ -67,10 +76,11 @@ public class Prism implements ClientModInitializer {
         }));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             guard.onDisconnect();
+            fakePlayers.clear();
             invGuard.reset();
             config.save();
         });
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> config.save());
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> { config.save(); bots.leaveAll(); proxies.tor().stop(); });
 
         LOG.info("{} {} loaded {} modules in {}ms", NAME, VERSION, modules.all().size(), System.currentTimeMillis() - start);
 
@@ -108,6 +118,56 @@ public class Prism implements ClientModInitializer {
                         client.getMainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
                 }
                 if (client.screen instanceof dev.prismglass.gui.ClickGuiScreen gui) {
+                    // right-click a slider -> type a number (Enter applies, clamped, not step-snapped; Esc cancels)
+                    if (ticks[0] == 150) {
+                        // the first module shown in a panel that has a slider
+                        for (var mod : modules.all()) {
+                            if (gui.debugRect(mod) == null) continue;
+                            var num = mod.getSettings().stream().filter(st -> st instanceof dev.prismglass.setting.NumberSetting).findFirst();
+                            if (num.isPresent()) { guiTestMod = mod; guiTestNum = (dev.prismglass.setting.NumberSetting) num.get(); break; }
+                        }
+                        LOG.info("[guitest] slider test on {} / {}", guiTestMod == null ? "-" : guiTestMod.getName(), guiTestNum == null ? "-" : guiTestNum.getName());
+                    }
+                    var theme = guiTestMod;
+                    var ns = guiTestNum;
+                    java.util.function.BiConsumer<float[], Integer> press = (r, b) -> gui.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(
+                        r[0] + r[2] * 0.5, r[1] + r[3] * 0.5, new net.minecraft.client.input.MouseButtonInfo(b, 0)), false);
+                    java.util.function.Consumer<String> type = str -> { for (char c : str.toCharArray()) gui.charTyped(new net.minecraft.client.input.CharacterEvent(c)); };
+                    if (ticks[0] == 150 && theme != null) { float[] r = gui.debugRect(theme); if (r != null) press.accept(r, 1); } // expand its settings
+                    if (ticks[0] == 156 && ns != null) {
+                        float[] r = gui.debugRect(ns);
+                        if (r == null) LOG.info("[guitest] FAIL slider AnimSpeed not visible");
+                        else {
+                            press.accept(r, 1);
+                            String shown = gui.debugNumInput();
+                            double target = ns.getMin() + (ns.getMax() - ns.getMin()) * 0.37 + ns.getStep() * 0.31; // off the step grid
+                            String typed = String.format(java.util.Locale.ROOT, "%.3f", target).replace('.', ',');
+                            type.accept(typed);
+                            gui.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0));
+                            double want = Double.parseDouble(typed.replace(',', '.'));
+                            LOG.info("[guitest] {} right-click opens the number box (showed '{}'), typed {} -> {} (display {})",
+                                shown != null && Math.abs(ns.get() - want) < 1e-9 ? "PASS" : "FAIL", shown, typed, ns.get(), ns.display());
+                        }
+                    }
+                    if (ticks[0] == 157 && ns != null) { gui.debugTypeNumber(ns); type.accept("12,5"); }
+                    if (ticks[0] == 159 && ns != null)
+                        net.minecraft.client.Screenshot.grab(client.gameDirectory, "prism-guitest-number.png", client.getMainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
+                    if (ticks[0] == 160 && ns != null) {
+                        gui.debugTypeNumber(ns);
+                        type.accept("99");
+                        gui.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0));
+                        LOG.info("[guitest] {} 99 clamps to the max -> {}", ns.get() == ns.getMax() ? "PASS" : "FAIL", ns.get());
+                        double before = ns.get();
+                        gui.debugTypeNumber(ns);
+                        type.accept("1");
+                        gui.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0));
+                        LOG.info("[guitest] {} Esc cancels (still {}), GUI still open: {}", ns.get() == before && client.screen == gui ? "PASS" : "FAIL", ns.get(), client.screen == gui);
+                        float[] r = gui.debugRect(ns);
+                        if (r != null) { press.accept(r, 2); LOG.info("[guitest] {} middle-click resets -> {}", ns.get().equals(ns.getDefault()) ? "PASS" : "FAIL", ns.get()); }
+                        ns.reset();
+                        float[] m = gui.debugRect(theme);
+                        if (m != null) press.accept(m, 1); // collapse again for the screenshots
+                    }
                     if (ticks[0] == 170) {
                         // a bind pressed in the GUI toggles its module and must not type into the search
                         var m = modules.get(dev.prismglass.module.render.Fullbright.class);
@@ -151,10 +211,16 @@ public class Prism implements ClientModInitializer {
         if (Boolean.getBoolean("prismglass.elytratest")) dev.prismglass.dev.ElytraTest.install();
         if (Boolean.getBoolean("prismglass.flighttest")) dev.prismglass.dev.FlightTest.install();
         if (Boolean.getBoolean("prismglass.hudtest")) dev.prismglass.dev.HudTest.install();
+        if (Boolean.getBoolean("prismglass.pluginstest")) dev.prismglass.dev.PluginsTest.install();
+        if (Boolean.getBoolean("prismglass.proxytest")) dev.prismglass.dev.ProxyTest.install();
+        if (Boolean.getBoolean("prismglass.bottest")) dev.prismglass.dev.BotTest.install();
         if (Boolean.getBoolean("prismglass.pearltest")) dev.prismglass.dev.PearlTest.install();
         if (Boolean.getBoolean("prismglass.minetest")) dev.prismglass.dev.MineTest.install();
         if (Boolean.getBoolean("prismglass.dupetest")) dev.prismglass.dev.DupeTest.install();
         if (Boolean.getBoolean("prismglass.stafftest")) dev.prismglass.dev.StaffTest.install();
+        if (Boolean.getBoolean("prismglass.holotest")) dev.prismglass.dev.HoloTest.install();
+        if (Boolean.getBoolean("prismglass.sustest")) dev.prismglass.dev.SusTest.install();
+        if (Boolean.getBoolean("prismglass.rebreaktest")) dev.prismglass.dev.RebreakTest.install();
         if (Boolean.getBoolean("prismglass.pflytest")) dev.prismglass.dev.PacketFlyTest.install();
         if (Boolean.getBoolean("prismglass.crystaltest")) dev.prismglass.dev.CrystalTest.install();
         if (Boolean.getBoolean("prismglass.elytrabottest")) dev.prismglass.dev.ElytraBotTest.install();
@@ -227,6 +293,7 @@ public class Prism implements ClientModInitializer {
         Render3D.begin(ctx);
         modules.onRender3D(ctx.poseStack(), delta);
         dev.prismglass.gui.render.PlayerHat.render(delta);
+        if (dev.prismglass.gui.render.Holo.active()) dev.prismglass.gui.render.Holo.renderWorld(ctx);
         Render3D.end();
     }
 
@@ -262,9 +329,17 @@ public class Prism implements ClientModInitializer {
     public static PacketGuard guard() { return guard; }
     public static FriendManager friends() { return friends; }
     public static CommandManager commands() { return commands; }
+
+    // guitest: the module/slider used for the number-box check
+    private static dev.prismglass.module.Module guiTestMod;
+    private static dev.prismglass.setting.NumberSetting guiTestNum;
     public static ConfigManager config() { return config; }
     public static AntiCheat anticheat() { return anticheat; }
     public static dev.prismglass.manager.ReachBudget reachBudget() { return reachBudget; }
     public static dev.prismglass.manager.InventoryGuard invGuard() { return invGuard; }
     public static dev.prismglass.manager.Humanizer humanizer() { return humanizer; }
+    public static dev.prismglass.manager.FakePlayers fakePlayers() { return fakePlayers; }
+    public static dev.prismglass.manager.AccountManager accounts() { return accounts; }
+    public static dev.prismglass.manager.ProxyManager proxies() { return proxies; }
+    public static dev.prismglass.manager.BotPlayers bots() { return bots; }
 }

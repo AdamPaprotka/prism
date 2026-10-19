@@ -167,7 +167,7 @@ public class Hud extends Module {
     }
 
     /** Where to draw an element of this size: the dragged spot, else its default. Records the bounds. */
-    private float[] place(String name, float w, float h, float defX, float defY, int sw, int sh) {
+    public float[] place(String name, float w, float h, float defX, float defY, int sw, int sh) {
         parse();
         float[] f = positions.get(name);
         float x = f == null ? defX : f[0] * Math.max(0, sw - w), y = f == null ? defY : f[1] * Math.max(0, sh - h);

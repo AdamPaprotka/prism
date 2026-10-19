@@ -10,6 +10,9 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    // SOCKS/HTTP proxy handlers for the Proxies feature: Minecraft ships Netty without them, so they go jar-in-jar
+    implementation include("io.netty:netty-handler-proxy:4.2.7.Final")
+    implementation include("io.netty:netty-codec-socks:4.2.7.Final")
 }
 
 loom {
@@ -18,7 +21,7 @@ loom {
         client {
             if (project.hasProperty('audit')) vmArg '-Dprismglass.audit=true'
             // automated tests run in an invisible, unfocused window (StreamProof/fullscreen tests need a visible one)
-            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest']
+            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest', 'holotest', 'sustest', 'rebreaktest', 'pluginstest', 'proxytest', 'bottest']
                     .any { project.hasProperty(it) } && !project.hasProperty('visible')) vmArg '-Dprismglass.hidden=true'
             if (project.hasProperty('guitest')) vmArg '-Dprismglass.guitest=true'
             if (project.hasProperty('guiblocky')) vmArg '-Dprismglass.guiblocky=true'
@@ -27,6 +30,13 @@ loom {
             if (project.hasProperty('minetest')) vmArg '-Dprismglass.minetest=true'
             if (project.hasProperty('dupetest')) vmArg '-Dprismglass.dupetest=true'
             if (project.hasProperty('stafftest')) vmArg '-Dprismglass.stafftest=true'
+            if (project.hasProperty('holotest')) vmArg '-Dprismglass.holotest=true'
+            if (project.hasProperty('holosp')) vmArg '-Dprismglass.holosp=true'
+            if (project.hasProperty('sustest')) vmArg '-Dprismglass.sustest=true'
+            if (project.hasProperty('rebreaktest')) vmArg '-Dprismglass.rebreaktest=true'
+            if (project.hasProperty('pluginstest')) vmArg '-Dprismglass.pluginstest=true'
+            if (project.hasProperty('proxytest')) vmArg '-Dprismglass.proxytest=true'
+            if (project.hasProperty('bottest')) vmArg '-Dprismglass.bottest=true'
             if (project.hasProperty('rconcmds')) vmArg '-Dprismglass.rconcmds=true'
             if (project.hasProperty('acpreset')) vmArg "-Dprismglass.acpreset=${project.property('acpreset')}"
             if (project.hasProperty('combattest')) vmArg '-Dprismglass.combattest=true'

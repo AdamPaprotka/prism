@@ -12,7 +12,8 @@ import net.minecraft.world.item.Items;
  * opens a list editor for it with icons, add-with-autocomplete, remove and, for ordered lists, reordering.
  */
 public class ListSetting extends TextSetting {
-    public enum Kind { BLOCK, ITEM, CHOICE }
+    /** TEXT: any word (e.g. a namespace); the choices are only suggestions. */
+    public enum Kind { BLOCK, ITEM, CHOICE, TEXT }
 
     private final Kind kind;
     private final boolean ordered;
@@ -89,6 +90,7 @@ public class ListSetting extends TextSetting {
     }
 
     public boolean valid(String id) {
+        if (kind == Kind.TEXT) return !normalize(id).isEmpty();
         universe();
         return universeSet.contains(normalize(id));
     }
@@ -100,9 +102,9 @@ public class ListSetting extends TextSetting {
             switch (kind) {
                 case BLOCK -> { for (Identifier id : BuiltInRegistries.BLOCK.keySet()) u.add(shortId(id)); }
                 case ITEM -> { for (Identifier id : BuiltInRegistries.ITEM.keySet()) u.add(shortId(id)); }
-                case CHOICE -> u.addAll(choices);
+                case CHOICE, TEXT -> u.addAll(choices);
             }
-            if (kind != Kind.CHOICE) Collections.sort(u);
+            if (kind == Kind.BLOCK || kind == Kind.ITEM) Collections.sort(u);
             universe = u;
             universeSet = new HashSet<>(u);
         }
@@ -128,6 +130,7 @@ public class ListSetting extends TextSetting {
 
     private ItemStack makeIcon(String e) {
         {
+            if (kind == Kind.TEXT) return ItemStack.EMPTY;
             String id = kind == Kind.CHOICE ? choiceIcons.get(e) : normalize(e);
             if (id == null) return ItemStack.EMPTY;
             Identifier key = Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);

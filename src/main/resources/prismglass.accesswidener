@@ -53,3 +53,19 @@ accessible field net/minecraft/world/level/levelgen/structure/TemplateStructureP
 
 # walk in ClickGUI: read the bound key of movement key mappings
 accessible field net/minecraft/client/KeyMapping key Lcom/mojang/blaze3d/platform/InputConstants$Key;
+
+# fake players (.joinplayer): tab-list entries without a server packet
+accessible field net/minecraft/client/multiplayer/ClientPacketListener playerInfoMap Ljava/util/Map;
+accessible field net/minecraft/client/multiplayer/ClientPacketListener listedPlayers Ljava/util/Set;
+
+# account manager: swap the user for cracked logins
+accessible field net/minecraft/client/Minecraft user Lnet/minecraft/client/User;
+mutable field net/minecraft/client/Minecraft user Lnet/minecraft/client/User;
+accessible field net/minecraft/client/Minecraft profileKeyPairManager Lnet/minecraft/client/multiplayer/ProfileKeyPairManager;
+mutable field net/minecraft/client/Minecraft profileKeyPairManager Lnet/minecraft/client/multiplayer/ProfileKeyPairManager;
+
+# bots: hand the live connection to a bot listener (.switchplayer keeps your old account online)
+accessible field net/minecraft/network/Connection packetListener Lnet/minecraft/network/PacketListener;
+accessible field net/minecraft/network/Connection disconnectListener Lnet/minecraft/network/PacketListener;
+accessible field net/minecraft/client/multiplayer/ClientCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;
+mutable field net/minecraft/client/multiplayer/ClientCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;

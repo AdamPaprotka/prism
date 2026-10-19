@@ -9,6 +9,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.prismglass.gui.render.Glass;
+import dev.prismglass.gui.render.Holo;
 import dev.prismglass.streamproof.Overlay;
 import dev.prismglass.streamproof.PrismGuiState;
 import java.util.Comparator;
@@ -38,7 +39,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Liquid glass snapshot, plus StreamProof's GUI split: every stratum from Prism's first one onward (marked through
  * PrismGuiState) is meshed after the vanilla ones and drawn into the overlay target instead of the main target,
- * the same way vanilla splits strata around the background blur.
+ * the same way vanilla splits strata around the background blur. The ClickGUI's PopOut hologram is a third part,
+ * drawn into Holo's capture target.
  */
 @Mixin(GuiRenderer.class)
 public abstract class GuiRendererMixin {
@@ -64,15 +66,23 @@ public abstract class GuiRendererMixin {
     @Shadow private void executeDrawRange(Supplier<String> label, RenderTarget target, GpuBufferSlice fogBuffer, GpuBufferSlice dynamicTransforms,
                                           GpuBuffer indexBuffer, VertexFormat.IndexType indexType, int startIndex, int endIndex) {}
 
-    /** Draw index where the overlay part starts this frame (MAX_VALUE = no split). */
+    /** Draw indices where the overlay / hologram parts start this frame (MAX_VALUE = none). */
     @Unique private int prism$overlayDrawStart = Integer.MAX_VALUE;
+    @Unique private int prism$holoDrawStart = Integer.MAX_VALUE;
 
+    /**
+     * Up to three parts, in stratum order: main (vanilla GUI), StreamProof overlay (Prism HUD; ClickGUI too when it
+     * isn't popped out), hologram (the popped-out ClickGUI, drawn into Holo.target; with StreamProof the panel itself
+     * is then drawn into the overlay by Holo.renderWorld).
+     */
     @Inject(method = "prepare", at = @At("HEAD"), cancellable = true)
     private void prism$prepare(CallbackInfo ci) {
         PrismGuiState st = (PrismGuiState) renderState;
-        int overlay = st.prism$overlayStratum();
+        int overlay = Overlay.active() ? st.prism$overlayStratum() : Integer.MAX_VALUE;
+        int holo = Holo.capturing() ? st.prism$holoStratum() : Integer.MAX_VALUE;
         prism$overlayDrawStart = Integer.MAX_VALUE;
-        if (overlay == Integer.MAX_VALUE || !Overlay.active()) return;
+        prism$holoDrawStart = Integer.MAX_VALUE;
+        if (overlay == Integer.MAX_VALUE && holo == Integer.MAX_VALUE) return;
         ci.cancel();
         bufferSource.endBatch();
         preparePictureInPicture();
@@ -80,12 +90,19 @@ public abstract class GuiRendererMixin {
         prepareText();
         renderState.sortElements(ELEMENT_SORT_COMPARATOR);
         int blur = st.prism$blurStratum(), count = st.prism$strataCount();
-        int mainEnd = Math.min(overlay, count);
+        int holoStart = Math.min(holo, count);
+        int mainEnd = Math.min(overlay, holoStart);
         prism$addRange(0, Math.min(blur, mainEnd));
         firstDrawIndexAfterBlur = blur < mainEnd ? meshesToDraw.size() : Integer.MAX_VALUE;
         if (blur < mainEnd) prism$addRange(blur, mainEnd);
-        prism$overlayDrawStart = meshesToDraw.size();
-        prism$addRange(mainEnd, count);
+        if (overlay != Integer.MAX_VALUE) {
+            prism$overlayDrawStart = meshesToDraw.size();
+            prism$addRange(mainEnd, holoStart);
+        }
+        if (holo != Integer.MAX_VALUE) {
+            prism$holoDrawStart = meshesToDraw.size();
+            prism$addRange(holoStart, count);
+        }
         recordDraws();
     }
 
@@ -103,9 +120,16 @@ public abstract class GuiRendererMixin {
     /** World and title panorama are drawn, the GUI is not: grab the image the liquid glass refracts. */
     @Inject(method = "draw", at = @At("HEAD"), cancellable = true)
     private void prism$draw(GpuBufferSlice fogBuffer, CallbackInfo ci) {
-        Glass.copySnapshot();
-        if (prism$overlayDrawStart == Integer.MAX_VALUE || !Overlay.active()) return;
+        boolean holo = prism$holoDrawStart != Integer.MAX_VALUE && Holo.capturing();
+        boolean overlay = prism$overlayDrawStart != Integer.MAX_VALUE && Overlay.active();
+        Holo.guiFrameDone(holo);
+        if (!holo) Glass.copySnapshot(); // PopOut: Holo.renderWorld took it before drawing the panel
+        if (!holo && !overlay) return;
         ci.cancel();
+        if (holo) {
+            // the hologram texture is transparent wherever the ClickGUI draws nothing
+            RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(Holo.target.getColorTexture(), 0, Holo.target.getDepthTexture(), 1.0);
+        }
         if (draws.isEmpty()) return;
         Minecraft minecraft = Minecraft.getInstance();
         WindowRenderState windowState = minecraft.gameRenderer.getGameRenderState().windowRenderState;
@@ -121,7 +145,8 @@ public abstract class GuiRendererMixin {
             .writeTransform(new Matrix4f().setTranslation(0.0F, 0.0F, -11000.0F), new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), new Vector3f(), new Matrix4f());
 
         int n = draws.size();
-        int mainEnd = Math.min(prism$overlayDrawStart, n);
+        int holoStart = holo ? Math.min(prism$holoDrawStart, n) : n;
+        int mainEnd = overlay ? Math.min(prism$overlayDrawStart, holoStart) : holoStart;
         int preBlurEnd = Math.min(firstDrawIndexAfterBlur, mainEnd);
         if (preBlurEnd > 0) executeDrawRange(() -> "GUI before blur", main, fogBuffer, dynamicTransforms, indexBuffer, indexType, 0, preBlurEnd);
         if (firstDrawIndexAfterBlur < mainEnd) {
@@ -130,11 +155,13 @@ public abstract class GuiRendererMixin {
             Glass.copySnapshot();
             executeDrawRange(() -> "GUI after blur", main, fogBuffer, dynamicTransforms, indexBuffer, indexType, firstDrawIndexAfterBlur, mainEnd);
         }
-        if (mainEnd < n) {
-            RenderTarget overlay = Overlay.OUTPUT.getRenderTarget();
-            RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(overlay.getDepthTexture(), 1.0);
-            executeDrawRange(() -> "Prism StreamProof overlay", overlay, fogBuffer, dynamicTransforms, indexBuffer, indexType, mainEnd, n);
+        if (overlay && mainEnd < holoStart) {
+            RenderTarget target = Overlay.OUTPUT.getRenderTarget();
+            RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(target.getDepthTexture(), 1.0);
+            executeDrawRange(() -> "Prism StreamProof overlay", target, fogBuffer, dynamicTransforms, indexBuffer, indexType, mainEnd, holoStart);
         }
+        if (holo && holoStart < n)
+            executeDrawRange(() -> "Prism holo capture", Holo.target, fogBuffer, dynamicTransforms, indexBuffer, indexType, holoStart, n);
     }
 
     /** Screens with a blurred background: refract the blurred image (vanilla path only; the split path does it itself). */

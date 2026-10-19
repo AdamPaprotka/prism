@@ -1,5 +1,57 @@
 # Prism Glass changelog
 
+## 1.6.2 - 2026-10-19
+
+### Proxies + Tor
+- Proxies (Accounts screen -> Proxies, or `.proxy`): SOCKS5, SOCKS4 or HTTP proxies for the server connection, like Meteor's. Pick one and the next server you join (and server list pings) goes through it, so the server sees the proxy's IP. "Direct" turns it off. Add one as `name host:port [type] [user pass]`; saved in prism/proxies.json.
+- Tor built in: the "Tor" entry starts tor.exe for you (Tor Expert Bundle in prism/tor or ~/tor; a Tor Browser already running on 9050 is used as is), shows the bootstrap state, "New identity" gets a fresh circuit and usually a new exit IP. Expect 250-500 ms ping: fine for chat, scouting and scans, not for fighting.
+- "Check IP" / `.proxy ip` shows the IP the internet sees through the proxy and whether it differs from your real one.
+- `.proxy account <account> <proxy>` ties a proxy to a cracked account: logging in as it switches the proxy too.
+- Only the game connection is proxied; the Mojang session check of a premium account still goes out directly, and the server hostname is resolved by your DNS before the proxy sees it.
+
+### Accounts + fake players
+- Accounts (ClickGUI top bar, or `.account`): cracked logins like a launcher's offline mode. Type any name, Login, and the next server you join sees that name (offline-mode servers only; online-mode ones refuse it, as always). "Original" goes back to the account the game started with; Random makes a name up. Saved in prism/accounts.json. `.account add|del|login|original|random|list [name]` does the same from chat.
+- `.joinplayer [name]` logs a real second player into the server you are on: its own connection, cracked account with that name (offline-mode servers; online-mode ones refuse it). It stands at its spawn, answers keep-alives, teleports and respawns, and everyone sees it. `.sayplayer <name|all> <message>` chats as it (a leading / runs a command), `.leaveplayer <name|all>` drops it. Bots go through the active proxy, so with Tor on they have a different IP than you. Aliases `.bot` `.sp` `.lp`.
+- `.switchplayer <bot> [drop]` makes you that bot. Your current connection is handed to a bot in place: the socket stays open, the bot answers keep-alives from then on, and the server never sees your old account leave (no join checks run on it again). Then the target bot disconnects, your session switches to its cracked account and the client logs in as it. `drop` disconnects your old account instead of keeping it as a bot. For when one account got a captcha, a watch or a mute and the other didn't.
+- `.fakeplayer [name]` / `.fakeleave` is the old client-side dummy: your skin and gear, only on your screen, target practice.
+
+### PluginScanner (World)
+- Lists the server's plugins. Bukkit registers every plugin command a second time as "plugin:command"; those namespaced copies sit in the command tree the server sends on join and in the tab-completions of "/", and the namespace is the plugin's name.
+- Scans on its own a few seconds after joining (AutoScanOnJoin), reads the join tree (passive) and asks the server to tab-complete "/" (ActiveScan, for servers that trim the join tree). ProbeCommands (off by default) also runs /bukkit:plugins and reads the answer, which gives the real names; that is a real command the server can log.
+- Chat output: server brand (ShowBrand) and "Plugins (n): ..." sorted by name; hover a name for the commands it registers, click the list to copy it. Hud shows the list as a glass panel you can drag in the HUD editor (HudLines caps it).
+- IgnoreList hides the server's own namespaces (minecraft, bukkit, spigot, paper, purpur, pufferfish, folia, velocity, bungeecord, waterfall, fabric, forge, neoforge); it is a free-text list, so add whatever a server spams.
+- `.plugins` scans now (`.plugins probe` also runs /bukkit:plugins once, `.plugins last` reprints), aliases `.pl` and `.pluginscan`; both tab-complete.
+- Tested: -Ppluginstest (the integrated server gets namespaced fake plugin commands and a /bukkit:plugins; real tree, tab-complete and chat packets).
+
+### ClickGUI: type slider values
+- Right-click any slider to type an exact number: Enter applies, Esc cancels, clicking anywhere else or closing the GUI applies too. Comma or dot both work. The value is kept inside the slider's range but not rounded to its step, so 4.37 on a 0.5-step slider stays 4.37. The first key you type replaces the old value.
+- Reset moved to middle-click (right-click used to reset).
+- Slider values always show with a dot (12.5), whatever your system language.
+
+### PacketMine: instant rebreak
+- Rebreak is now a mode: Instant (default), Normal, Off. The server never forgets where your last mining START was or when it was sent, and a lone STOP packet for that spot counts every tick since then. So when a block you mined gets placed back (an enemy fixing their surround), PacketMine silently swaps your best tool in and breaks it again with one STOP, as long as the time since the original START covers 70% of the break time with that tool.
+- Mining anything else in between resets that on the server: then it falls back to a normal rebreak automatically.
+- Tested on the vanilla 26.1.2 server: Efficiency V diamond pick on obsidian, normal mine 47 ticks, instant rebreak 3 ticks with the held slot unchanged (-Prebreaktest 5/5). Not tested against Paper patches or Grim's FastBreak yet.
+
+### SusChunks (World)
+- Finds chunks where amethyst geodes have grown out, which only happens where a player kept the area loaded for hours (base, AFK spot, stash). Budding amethyst only grows on random ticks, and those only run within simulation distance of a player: a fresh geode has about 9% of its open faces holding a full cluster, one left loaded for hours ends up near 100%.
+- Per chunk it counts every open face of budding amethyst and what grows on it; Growth (default 60%) and MinFaces decide the flag. Box over the geode part, "% grown" label, chat message with coordinates, optional tracers, count in the HUD.
+- Area: the player stood within SimDistance chunks of every geode they grew, so the overlap of those squares around a group of grown chunks is drawn as where they were. Set SimDistance to the server's simulation distance.
+- Method Palette for anti-xray servers that scramble single blocks (Auto picks it on Folia servers): a chunk with full clusters but no smaller bud counts as grown.
+- Tested: -Psustest 6/6 (grown vs fresh geode, area, palette mode).
+
+### ClickGUI PopOut (hologram) - BETA
+- Beta: it works and is tested (-Pholotest), but it is new and touches the GUI renderer; if it misbehaves, turn PopOut off and tell me.
+- New ClickGui setting PopOut: the whole ClickGUI floats in the world as a tilted, slightly curved glass panel, placed in front of where you look when you open it. Your HUD, hotbar and chat stay on the screen as normal.
+- Your mouse turns your head, and an arrow cursor sits where your crosshair hits the panel. Click, right click, scroll and drag sliders or panels by looking at them. Clicks that miss the panel do nothing.
+- The panel stays fixed in the world where it was placed: turning your head sweeps the cursor across it, and you can walk around it. HoloFace (on) smoothly turns it to keep facing you as you move (HoloTurn = how fast it eases round, 30 = instant), without moving it; hold Shift (or your sneak key) to stop it turning while you aim; it follows your position, not where you look, so the cursor still sweeps across it. A gentle idle sway (HoloSway) moves it a few centimetres.
+- Works with StreamProof: the panel and its cursor are drawn into the hidden layer with the world's camera, so you see it lined up with the world and capture sees nothing.
+- If the panel can't be drawn (another mod skipping the world render hook), the ClickGUI stays the normal flat one with a free mouse instead of locking your mouse.
+- Settings: HoloTilt (how far it leans back), HoloDepth (perspective strength), HoloSway (gentle floating drift), HoloFace (turn to face you), HoloTurn (turn speed), HoloSize (1 = 60% of your view's height, at any FOV), HoloCurve, Cursor colour, CursorSize. Background blur and dim are skipped while it's popped out, so the world stays sharp.
+- While popped out the menu's liquid glass is drawn as clean see-through glass: refracting a blurred screenshot doesn't line up with a tilted panel and made it look smeared (worst with StreamProof, where the blur got baked into the hidden layer). The HUD keeps its liquid glass.
+- Closing the GUI hands the mouse back to the game, or to whatever screen you open next.
+- Tested: -Pholotest 23/23 (clicks, right click, toggles, slider drag by head movement, steering, panel fixed while turning and walking, off-panel clicks, closing, flat fallback) and the same with StreamProof on 24/24 (capture frame has no panel, the hidden layer has it), no GL errors.
+
 ## 1.6.1 - 2026-10-16
 
 ### StaffWatcher: AntiVanish upgrade

@@ -44,6 +44,18 @@ public class ClickGui extends Module {
     public final NumberSetting hatSize = num("HatSize", 1.0, 0.5, 2.0, 0.05, "Hat width.").visibleWhen(playerHat::get);
     public final BoolSetting hatSpin = bool("HatSpin", true, "Slowly spinning shading around the cone.").visibleWhen(playerHat::get);
 
+    // ---- hologram pop-out (true 3D: the ClickGUI is drawn to a texture and tilted into the world) ----
+    public final BoolSetting popOut = bool("PopOut", false, "BETA. Tilt the whole ClickGUI out into the world like a hologram, and point at it with a fake cursor.");
+    public final NumberSetting holoTilt = num("HoloTilt", 24, 0, 60, 1, "How far the hologram leans back, in degrees.").visibleWhen(popOut::get);
+    public final NumberSetting holoDepth = num("HoloDepth", 0.55, 0, 1, 0.01, "Perspective strength: how much the far edge shrinks.").visibleWhen(popOut::get);
+    public final BoolSetting holoSway = bool("HoloSway", true, "Gentle idle drift so it feels like it's floating.").visibleWhen(popOut::get);
+    public final BoolSetting holoFace = bool("HoloFace", true, "The panel stays where it opened but turns to face you as you walk around it.").visibleWhen(popOut::get);
+    public final NumberSetting holoTurn = num("HoloTurn", 6, 1, 30, 0.5, "How fast the panel turns to face you (smooth ease; 30 = instant).").visibleWhen(() -> popOut.get() && holoFace.get());
+    public final ColorSetting cursorColor = color("Cursor", 0xFFFF9A3C, "Fake cursor colour.").visibleWhen(popOut::get);
+    public final NumberSetting cursorSize = num("CursorSize", 1.3, 0.8, 2.5, 0.1, "Fake cursor size.").visibleWhen(popOut::get);
+    public final NumberSetting holoSize = num("HoloSize", 1.0, 0.4, 1.5, 0.05, "How big the floating hologram panel is (1 = 60% of your view's height, at any FOV).").visibleWhen(popOut::get);
+    public final NumberSetting holoCurve = num("HoloCurve", 0.1, 0, 0.35, 0.01, "How much the panel curves toward you.").visibleWhen(popOut::get);
+
     public final BoolSetting blocky = bool("Blocky", false, "Fun: pixel-art GUI. Same layout and glass, built from blocks; text stays sharp.");
     public final NumberSetting blockSize = num("BlockSize", 2, 1, 4, 0.5, "Size of one Blocky pixel (GUI units).");
     /** Newest changelog version already announced (hidden). */

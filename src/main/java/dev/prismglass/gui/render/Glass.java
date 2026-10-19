@@ -95,6 +95,12 @@ public final class Glass {
      */
     public static float pixel;
 
+    /**
+     * Liquid panels drawn as clean see-through glass instead of refracting the screenshot. Set by the ClickGUI while it
+     * is popped out (PopOut), only around its own elements, so the HUD keeps its liquid glass.
+     */
+    public static boolean flat;
+
     private Glass() {}
 
     /** Called right before GuiRenderer draws: copy the world image the glass refracts. */
@@ -163,7 +169,10 @@ public final class Glass {
             h = Math.max(pixel, y1 - y);
         }
         float r = Math.min(s.radius(), Math.min(w, h) / 2f);
-        if (s.liquid() && snapshotView != null && !shaderBroken) {
+        // PopOut: liquid glass refracts a blurred screenshot at the panel's flat screen position, which no longer lines
+        // up once the menu is tilted into the world (and with StreamProof it gets baked into the hidden layer): smeared,
+        // blurry panels. Clean see-through glass instead, so the real world shows through sharply.
+        if (s.liquid() && snapshotView != null && !shaderBroken && !flat) {
             if (s.shadow()) submit(ctx, SHAPES, shadow(new Shape.Builder(), x, y, w, h, r, 8f,
                 ColorUtil.withAlpha(0x000000, (int) (110 * Math.min(1f, s.opacity() * 2f)))));
             ctx.guiRenderState.addGuiElement(new LiquidPanel(new Matrix3x2f(ctx.pose()), x, y, w, h, r, s,
