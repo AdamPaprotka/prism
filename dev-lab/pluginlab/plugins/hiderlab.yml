@@ -1,0 +1,12 @@
+name: HiderLab
+main: dev.prismlab.HiderLab
+version: 1.0-lab
+api-version: '26.1'
+commands:
+  hidermode:
+    description: "Lab switch: 0 open, 1 hidden, 2 strict, 3 namespaces hidden only"
+    usage: /hidermode <0-3>
+    permission: hiderlab.admin
+permissions:
+  hiderlab.admin:
+    default: op

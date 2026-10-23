@@ -1,137 +1,101 @@
 package dev.prismglass.dev;
 
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import dev.prismglass.Prism;
 import dev.prismglass.module.client.Hud;
 import dev.prismglass.module.world.PluginScanner;
-import java.util.List;
+import dev.prismglass.scan.Evidence;
+import dev.prismglass.scan.Finding;
+import dev.prismglass.scan.ScanResult;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.Screenshot;
-import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.Difficulty;
-import net.minecraft.world.level.GameType;
-import net.minecraft.world.level.LevelSettings;
-import net.minecraft.world.level.WorldDataConfiguration;
-import net.minecraft.world.level.levelgen.WorldOptions;
-import net.minecraft.world.level.levelgen.presets.WorldPresets;
 
 /**
- * Dev only (-Ppluginstest): PluginScanner against the integrated server dressed up as a Bukkit one. Namespaced
- * commands ("worldedit:wand", ...) are added to the real server dispatcher and the real command tree, tab-complete
- * and /bukkit:plugins packets flow. Checks passive (tree), active (tab), probe (proper names), the ignore list,
- * the .plugins command and the HUD panel. Logs "[pluginstest]" PASS/FAIL lines, saves prism-plugins.png, exits.
+ * Dev only (-Ppluginstest). Two modes, picked by whether -Pmp=host:port was given:
+ * <ul>
+ *   <li>local (no -Pmp): {@link PluginsLocalTest}, the integrated server dressed up as a Bukkit one;</li>
+ *   <li>network (-Pmp=localhost:25610 -Prconport=25611): a real Paper server running the stub plugins from
+ *       dev-lab/pluginlab, switched between "open", "hidden" and "strict" by RCON.</li>
+ * </ul>
  */
 public final class PluginsTest {
-    private static final Minecraft mc = Minecraft.getInstance();
-    private static int ticks, t, passed, failed;
-    private static boolean requested;
+    static final Minecraft mc = Minecraft.getInstance();
+    static int passed, failed;
 
     private PluginsTest() {}
 
-    public static void install() { ClientTickEvents.END_CLIENT_TICK.register(c -> tick()); }
+    public static void install() {
+        boolean net = false;
+        for (String a : FabricLoader.getInstance().getLaunchArguments(true)) if (a.equals("--quickPlayMultiplayer")) net = true;
+        if (net) PluginsNetTest.install(); else PluginsLocalTest.install();
+    }
 
-    private static void log(String s) { Prism.LOG.info("[pluginstest] {}", s); }
+    static void log(String s) { Prism.LOG.info("[pluginstest] {}", s); }
 
-    private static void check(String what, boolean ok) {
+    static void check(String what, boolean ok) {
         if (ok) passed++; else failed++;
         log((ok ? "PASS " : "FAIL ") + what);
     }
 
-    private static void run(MinecraftServer s, String cmd) {
-        s.execute(() -> s.getCommands().performPrefixedCommand(s.createCommandSourceStack(), cmd));
+    static void finish() {
+        log("passed " + passed + " failed " + failed);
+        log(failed == 0 ? "ALL PASS" : "SOME FAILED");
+        Runtime.getRuntime().halt(0);
     }
 
-    private static void fakeCommand(MinecraftServer s, String name) {
-        s.getCommands().getDispatcher().getRoot().addChild(
-            LiteralArgumentBuilder.<CommandSourceStack>literal(name).executes(c -> 1).build());
+    /** One line per finding: name, confidence, the methods that found it. No chat text is ever involved. */
+    static void dump(ScanResult r) {
+        log("verdict " + r.view.verdict() + " (score " + r.view.score() + ", bukkitLike " + r.view.bukkitLike() + ")");
+        for (String reason : r.view.reasons()) log("  reason: " + reason);
+        for (Finding f : r.software) log("  software " + f.name() + " " + f.confidence() + " " + f.methods());
+        for (Finding f : r.plugins) {
+            log("  plugin " + f.name() + " " + f.confidence() + " " + f.score() + "% " + f.methods());
+            for (Evidence e : f.evidence()) log("      " + e.method() + " " + e.weight() + ": " + e.detail());
+        }
+        for (Finding f : r.builtins) log("  builtin " + f.name() + " " + f.confidence() + " " + f.methods());
+        log("  custom commands " + r.customCommands);
+        log("  other channels " + r.otherChannels);
+        log("  ping " + r.ping);
     }
 
-    private static void tick() {
-        ticks++;
-        mc.options.pauseOnLostFocus = false;
-        if (!requested && ticks == 80 && mc.level == null) {
-            requested = true;
-            String name = "prismplugins-" + System.currentTimeMillis();
-            LevelSettings info = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
-            mc.createWorldOpenFlows().createFreshLevel(name, info, new WorldOptions(1L, false, false),
-                lookup -> lookup.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
-            return;
-        }
-        if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
-        t++;
-        MinecraftServer s = mc.getSingleplayerServer();
-        PluginScanner scanner = Prism.modules().get(PluginScanner.class);
-
-        if (t == 30) {
-            for (var m : Prism.modules().all())
-                if (m.isEnabled() && !(m instanceof dev.prismglass.module.client.AntiCheat) && !(m instanceof Hud)) m.setEnabled(false);
-            run(s, "gamerule advance_time false");
-            // the integrated server pretends to be Paper: namespaced copies of plugin commands + /bukkit:plugins
-            s.execute(() -> {
-                for (String n : List.of("worldedit:wand", "worldedit:schematic", "coreprotect:co", "minecraft:tp", "bukkit:version", "paper:paper"))
-                    fakeCommand(s, n);
-                s.getCommands().getDispatcher().getRoot().addChild(LiteralArgumentBuilder.<CommandSourceStack>literal("bukkit:plugins")
-                    .executes(c -> {
-                        c.getSource().sendSystemMessage(Component.literal("§fPlugins (3): §aCoreProtect§f, §aWorldEdit§f, §aLuckPerms"));
-                        return 1;
-                    }).build());
-                s.getCommands().sendCommands(s.getPlayerList().getPlayers().get(0));
-            });
-        }
-        // 1) passive only: the tree the server just sent
-        if (t == 50) {
-            for (var st : scanner.getSettings()) st.reset();
-            scanner.activeScan.set(false);
-            scanner.probeCommands.set(false);
-            scanner.setEnabled(true); // onEnable schedules a scan 60 ticks later
-        }
-        if (t == 150) {
-            log("passive: " + scanner.plugins() + " from " + scanner.sources() + ", brand " + scanner.brand());
-            check("passive finds the two namespaces", scanner.plugins().equals(List.of("coreprotect", "worldedit")));
-            check("passive source is the tree only", scanner.sources().equals(java.util.Set.of("tree")));
-            check("server core namespaces ignored", !scanner.plugins().contains("minecraft") && !scanner.plugins().contains("bukkit") && !scanner.plugins().contains("paper"));
-            check("brand read", scanner.brand() != null && !scanner.brand().isEmpty());
-        }
-        // 2) active: a command added after the tree was sent only shows up through tab-complete
-        if (t == 160) {
-            s.execute(() -> fakeCommand(s, "luckperms:lp"));
-            scanner.activeScan.set(true);
-        }
-        if (t == 170) Prism.commands().handle(".plugins");
-        if (t == 230) {
-            log("active: " + scanner.plugins() + " from " + scanner.sources());
-            check("active adds the tab-only plugin", scanner.plugins().equals(List.of("coreprotect", "luckperms", "worldedit")));
-            check("active source includes tab", scanner.sources().contains("tab"));
-        }
-        // 3) probe: /bukkit:plugins gives the real names
-        if (t == 240) Prism.commands().handle(".plugins probe");
-        if (t == 330) {
-            log("probe: " + scanner.plugins() + " from " + scanner.sources());
-            check("probe gives proper names", scanner.plugins().equals(List.of("CoreProtect", "LuckPerms", "WorldEdit")));
-            check("probe source recorded", scanner.sources().contains("probe"));
-            check("ignore list is editable", scanner.ignoreList.add("worldedit") && scanner.ignoreList.items().contains("worldedit"));
-        }
-        if (t == 340) Prism.commands().handle(".plugins");
-        if (t == 400) {
-            check("ignored namespace dropped after rescan", scanner.plugins().equals(List.of("coreprotect", "luckperms")));
-            scanner.ignoreList.reset();
-            scanner.hud.set(true);
-            Prism.commands().handle(".plugins last");
-            check("tab completion offers probe/last", Prism.commands().complete(".plugins ").options().containsAll(List.of("probe", "last")));
-        }
-        if (t == 420) {
-            check("HUD panel registered with the editor", Prism.modules().get(Hud.class).bounds().containsKey("Plugins"));
-            Screenshot.grab(mc.gameDirectory, "prism-plugins.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
-        }
-        if (t == 440) {
-            log("passed " + passed + " failed " + failed);
-            log(failed == 0 ? "ALL PASS" : "SOME FAILED");
-            Runtime.getRuntime().halt(0);
+    /** Minimal Source RCON client: authenticate, run one command, return the answer. */
+    static String rcon(int port, String password, String command) {
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress("127.0.0.1", port), 3000);
+            s.setSoTimeout(5000);
+            DataOutputStream out = new DataOutputStream(s.getOutputStream());
+            DataInputStream in = new DataInputStream(s.getInputStream());
+            send(out, 1, 3, password);
+            read(in); // the auth answer (Minecraft sends exactly one packet for it)
+            send(out, 2, 2, command);
+            return read(in);
+        } catch (IOException e) {
+            return "rcon error: " + e.getMessage();
         }
     }
+
+    private static void send(DataOutputStream out, int id, int type, String body) throws IOException {
+        byte[] b = body.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer buf = ByteBuffer.allocate(14 + b.length).order(ByteOrder.LITTLE_ENDIAN);
+        buf.putInt(10 + b.length).putInt(id).putInt(type).put(b).put((byte) 0).put((byte) 0);
+        out.write(buf.array());
+        out.flush();
+    }
+
+    private static String read(DataInputStream in) throws IOException {
+        byte[] head = in.readNBytes(4);
+        int len = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        byte[] body = in.readNBytes(len);
+        return new String(body, 8, Math.max(0, len - 10), StandardCharsets.UTF_8);
+    }
+
+    static boolean hudHasPanel() { return Prism.modules().get(Hud.class).bounds().containsKey("Plugins"); }
 }

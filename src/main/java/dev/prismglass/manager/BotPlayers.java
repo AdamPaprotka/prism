@@ -12,6 +12,7 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -106,7 +107,10 @@ public final class BotPlayers {
     }
 
     /** @return an error for chat, or null when the bot started connecting. */
-    public String join(String name) {
+    public String join(String name) { return join(name, false); }
+
+    /** @param newIp connect through Tor on a circuit of its own, so the bot has an IP different from you and the other bots */
+    public String join(String name, boolean newIp) {
         if (mc.getConnection() == null || mc.isLocalServer() || mc.getCurrentServer() == null) return "Join a server first (bots connect to the server you are on)";
         if (!FakePlayers.validName(name)) return "Names are 1-16 letters, digits or _";
         if (get(name) != null) return name + " is already one of your bots";
@@ -114,6 +118,9 @@ public final class BotPlayers {
         ServerData sd = mc.getCurrentServer();
         ServerAddress sa = ServerAddress.parseString(sd.ip);
         Bot bot = new Bot(name, sa.getHost(), sa.getPort(), mc.getConnection().registryAccess());
+        bot.viaSource = mc.getConnection().getConnection();
+        bot.ownCircuit = newIp;
+        if (newIp && !Prism.proxies().tor().running()) Prism.proxies().tor().start();
         bots.put(name, bot);
         Thread t = new Thread(bot::connect, "prism-bot-" + name);
         t.setDaemon(true);
@@ -214,6 +221,8 @@ public final class BotPlayers {
         private final int port;
         private final UUID uuid;
         private final RegistryAccess.Frozen registries;
+        /** Your connection when the bot was made: ViaFabricPlus' target version is copied from it. */
+        private volatile Connection viaSource;
         volatile Connection conn;
         private volatile ConnectionProtocol phase = ConnectionProtocol.LOGIN;
         private volatile boolean inPlay, gone;
@@ -223,6 +232,10 @@ public final class BotPlayers {
         private volatile boolean hasPos;
         private int ticks;
         private volatile long diedAt;
+        /** .joinplayer name true: this bot rides its own Tor circuit. */
+        volatile boolean ownCircuit;
+        private String circuitTag;
+        private boolean ipReported;
 
         Bot(String name, String host, int port, RegistryAccess.Frozen registries) {
             this.name = name;
@@ -233,6 +246,7 @@ public final class BotPlayers {
         }
 
         public boolean inGame() { return inPlay && !gone; }
+        public boolean ownCircuit() { return ownCircuit; }
 
         /** Take over a connection that is already in the game (the client's own, see detachSelf). */
         void adopt(Connection c, double x, double y, double z, float yaw, float pitch) {
@@ -249,7 +263,31 @@ public final class BotPlayers {
             try {
                 InetSocketAddress addr = ServerNameResolver.DEFAULT.resolveAddress(new ServerAddress(host, port))
                     .map(r -> r.asInetSocketAddress()).orElseThrow(() -> new IllegalStateException("cannot resolve " + host));
-                Connection c = Connection.connectToServer(addr, EventLoopGroupHolder.remote(mc.options.useNativeTransport()), null);
+                Object via = ViaBridge.targetVersion(viaSource);
+                EventLoopGroupHolder holder = EventLoopGroupHolder.remote(mc.options.useNativeTransport());
+                java.util.function.Supplier<Connection> open = () -> {
+                    Connection made = new Connection(PacketFlow.CLIENTBOUND);
+                    if (ViaBridge.setTargetVersion(made, via)) Prism.LOG.info("Bot {}: ViaFabricPlus target version {}", name, ViaBridge.describe(via));
+                    Connection.connect(addr, holder, made).syncUninterruptibly();
+                    return made;
+                };
+                Connection c;
+                if (ownCircuit) {
+                    TorRunner tor = Prism.proxies().tor();
+                    long until = System.currentTimeMillis() + 90_000;
+                    while (!tor.ready() && System.currentTimeMillis() < until) {
+                        if (!tor.running() && !tor.start()) throw new IllegalStateException(tor.status());
+                        Thread.sleep(250);
+                    }
+                    if (!tor.ready()) throw new IllegalStateException("Tor did not come up: " + tor.status());
+                    circuitTag = name + "-" + Long.toHexString(System.nanoTime());
+                    Connection[] made = new Connection[1];
+                    String tag = circuitTag;
+                    Prism.proxies().connectWith(() -> Prism.proxies().isolatedTorHandler(tag), () -> made[0] = open.get());
+                    c = made[0];
+                } else {
+                    c = open.get();
+                }
                 BOT_CONNECTIONS.add(c);
                 conn = c;
                 c.initiateServerboundPlayConnection(host, port, listener(ClientLoginPacketListener.class));
@@ -285,6 +323,18 @@ public final class BotPlayers {
                 return;
             }
             if (!inPlay || !hasPos) return;
+            if (ownCircuit && !ipReported) {
+                ipReported = true;
+                String tag = circuitTag;
+                Thread t = new Thread(() -> {
+                    try {
+                        String ip = ProxyManager.publicIp(new ProxyManager.Proxy("tor-" + name, ProxyManager.Type.SOCKS5, TorRunner.HOST, TorRunner.SOCKS_PORT, "prism-" + tag, "x"));
+                        mc.execute(() -> ChatUtil.info("Bot \u00a7f" + name + "\u00a77 is in from \u00a7f" + ip + "\u00a77 (own Tor circuit)"));
+                    } catch (Exception ignored) {}
+                }, "prism-bot-ip");
+                t.setDaemon(true);
+                t.start();
+            }
             ticks++;
             if (ticks % 20 == 0) c.send(new ServerboundMovePlayerPacket.Pos(x, y, z, true, false));
             c.send(ServerboundClientTickEndPacket.INSTANCE);
@@ -311,7 +361,11 @@ public final class BotPlayers {
                 case "shouldPropagateHandlingExceptions": return false;
                 case "onDisconnect": {
                     DisconnectionDetails d = (DisconnectionDetails) args[0];
-                    if (reason == null) reason = "disconnected: " + d.reason().getString();
+                    if (reason == null) {
+                        String why = d.reason().getString();
+                        if (!inPlay && ownCircuit && why.toLowerCase(Locale.ROOT).contains("time")) why += " - Tor could not reach " + host + ":" + port + " in 60 s (no exit allowed the port, or the server blocks Tor). Try again or .proxy tor new";
+                        reason = "disconnected: " + why;
+                    }
                     gone = true;
                     return null;
                 }

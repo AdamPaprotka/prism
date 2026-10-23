@@ -18,7 +18,7 @@ import net.minecraft.server.network.EventLoopGroupHolder;
 public final class ProxyTest {
     private static final Minecraft mc = Minecraft.getInstance();
     private static int ticks, passed, failed, pingState;
-    private static boolean started, ipChecked, pinged, shot;
+    private static boolean started, ipChecked, pinged, shot, isoStarted, isoDone;
     private static long readyAt;
     private static String torIp;
 
@@ -78,23 +78,65 @@ public final class ProxyTest {
             pingState = 2;
             int before = ProxyManager.PROXIED_CONNECTIONS.get();
             try {
-                ServerData sd = new ServerData("proxytest", "mc.hypixel.net", ServerData.Type.OTHER);
+                ServerData sd = new ServerData("proxytest", "2b2t.org", ServerData.Type.OTHER);
                 new ServerStatusPinger().pingServer(sd,
                     () -> mc.execute(() -> {
                         log("ping ok: " + sd.motd.getString().replace('\n', ' ') + " / " + sd.ping + " ms");
-                        check("server status received through the proxy", true);
                         check("proxy handler was added to the connection", ProxyManager.PROXIED_CONNECTIONS.get() > before);
                         pingState = 3;
                     }),
-                    () -> mc.execute(() -> { if (pingState == 2) { check("server ping through Tor (failed: " + sd.status.getString() + ")", false); pingState = 3; } }), // also fires after success
+                    () -> mc.execute(() -> { if (pingState == 2) { log("info: 2b2t status through Tor not answered (" + sd.status.getString() + "), servers often drop Tor exits"); pingState = 3; } }), // also fires after success
                     EventLoopGroupHolder.remote(false));
             } catch (Exception e) {
                 check("ping start (" + e + ")", false);
                 pingState = 3;
             }
         }
-        if (pingState == 2 && ticks - readyAt > 20 * 60) { check("ping answered within 60 s", false); pingState = 3; }
-        if (pingState == 3 && !shot) {
+        if (pingState == 2 && ticks - readyAt > 20 * 60) { log("info: 2b2t status through Tor timed out, servers often drop Tor exits"); pingState = 3; }
+        // own-circuit bots: two isolated credential sets must land on different exits, and a connection opened through
+        // connectWith() must get the override handler (status ping through it)
+        if (pingState == 3 && !isoStarted) {
+            isoStarted = true;
+            Thread t = new Thread(() -> {
+                try {
+                    String a = ProxyManager.publicIp(new ProxyManager.Proxy("isoA", ProxyManager.Type.SOCKS5, TorRunner.HOST, TorRunner.SOCKS_PORT, "prism-testA", "x"));
+                    String b = ProxyManager.publicIp(new ProxyManager.Proxy("isoB", ProxyManager.Type.SOCKS5, TorRunner.HOST, TorRunner.SOCKS_PORT, "prism-testB", "x"));
+                    log("isolated circuits: A=" + a + " B=" + b + " default=" + torIp);
+                    check("isolated credentials give different exit IPs", a != null && b != null && !a.equals(b));
+                    check("isolated exit differs from the default circuit", !a.equals(torIp) || !b.equals(torIp));
+                } catch (Exception e) {
+                    check("isolated circuit IP check (" + e + ")", false);
+                }
+                // Netty path: Bootstrap + the override handler (what a bot's Connection gets) to a host that welcomes Tor
+                try {
+                    int before = ProxyManager.PROXIED_CONNECTIONS.get();
+                    io.netty.channel.ChannelFuture[] cf = new io.netty.channel.ChannelFuture[1];
+                    EventLoopGroupHolder holder = EventLoopGroupHolder.remote(false);
+                    Prism.proxies().connectWith(() -> Prism.proxies().isolatedTorHandler("netty-test"), () -> {
+                        io.netty.bootstrap.Bootstrap b = new io.netty.bootstrap.Bootstrap().group(holder.eventLoopGroup()).channel(holder.channelCls())
+                            .handler(new io.netty.channel.ChannelInitializer<io.netty.channel.Channel>() {
+                                @Override protected void initChannel(io.netty.channel.Channel ch) {
+                                    io.netty.channel.ChannelHandler h = Prism.proxies().handler(); // same call the mixin makes
+                                    if (h != null) ch.pipeline().addFirst("prism_proxy", h);
+                                }
+                            });
+                        cf[0] = b.connect(java.net.InetSocketAddress.createUnresolved("check.torproject.org", 443));
+                    });
+                    boolean ok = cf[0].await(60, java.util.concurrent.TimeUnit.SECONDS) && cf[0].isSuccess();
+                    log("netty connect through own circuit: " + (ok ? "connected" : String.valueOf(cf[0].cause())));
+                    check("TCP connect through an own-circuit Netty handler", ok);
+                    check("override handler was consumed", ProxyManager.PROXIED_CONNECTIONS.get() > before);
+                    if (ok) cf[0].channel().close();
+                } catch (Exception e) {
+                    check("own-circuit netty connect (" + e + ")", false);
+                }
+                isoDone = true;
+            }, "proxytest-iso");
+            t.setDaemon(true);
+            t.start();
+        }
+        if (isoStarted && !isoDone && ticks - readyAt > 20 * 150) { isoDone = true; check("own-circuit netty connect answered in time", false); }
+        if (pingState == 3 && isoDone && !shot) {
             shot = true;
             check("new identity accepted", tor.newIdentity());
             mc.setScreen(new dev.prismglass.gui.ProxiesScreen(null));

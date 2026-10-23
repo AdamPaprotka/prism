@@ -33,6 +33,8 @@ public class Scaffold extends Module {
     public Scaffold() { super("Scaffold", "Bridge automatically.", Category.MOVEMENT); }
 
     private boolean sneakWanted;
+    /** Flight (Grim mode) sets this to stop placing for a moment, e.g. while the player drops. */
+    public boolean paused;
     /** Ticks since the last place while we hold the block slot (-1 = not holding); the slot we came from. */
     private int heldSince = -1, prevSlot;
     private Vec3 walkDir;
@@ -45,6 +47,7 @@ public class Scaffold extends Module {
         sneakWanted = false;
         // swap back here, before the movement packet (after it = Grim Post)
         if (heldSince >= 0 && ++heldSince > 10) returnSlot();
+        if (paused) return;
         int slot = InvUtil.findHotbar(Scaffold::usable);
         if (slot == -1) return;
         // Which way we're really going. Not from the keys: with a silent rotation the move fix has remapped them
@@ -129,5 +132,8 @@ public class Scaffold extends Module {
     /** Fake (non-sneak) safewalk is off: the real sneak in {@link #wantsSneak()} does it Grim-safely. */
     public boolean safeWalk() { return false; }
 
-    public boolean wantsSneak() { return isEnabled() && sneakWanted; }
+    public boolean wantsSneak() { return isEnabled() && !paused && sneakWanted; }
+
+    /** True when a usable block is in the hotbar. */
+    public boolean hasBlocks() { return InvUtil.findHotbar(Scaffold::usable) != -1; }
 }

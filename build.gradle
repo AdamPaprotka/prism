@@ -21,7 +21,7 @@ loom {
         client {
             if (project.hasProperty('audit')) vmArg '-Dprismglass.audit=true'
             // automated tests run in an invisible, unfocused window (StreamProof/fullscreen tests need a visible one)
-            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest', 'holotest', 'sustest', 'rebreaktest', 'pluginstest', 'proxytest', 'bottest']
+            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest', 'holotest', 'sustest', 'rebreaktest', 'pingspiketest', 'pluginstest', 'proxytest', 'bottest', 'behindtest', 'inspecttest', 'modtest']
                     .any { project.hasProperty(it) } && !project.hasProperty('visible')) vmArg '-Dprismglass.hidden=true'
             if (project.hasProperty('guitest')) vmArg '-Dprismglass.guitest=true'
             if (project.hasProperty('guiblocky')) vmArg '-Dprismglass.guiblocky=true'
@@ -34,12 +34,17 @@ loom {
             if (project.hasProperty('holosp')) vmArg '-Dprismglass.holosp=true'
             if (project.hasProperty('sustest')) vmArg '-Dprismglass.sustest=true'
             if (project.hasProperty('rebreaktest')) vmArg '-Dprismglass.rebreaktest=true'
+            if (project.hasProperty('pingspiketest')) vmArg '-Dprismglass.pingspiketest=true'
             if (project.hasProperty('pluginstest')) vmArg '-Dprismglass.pluginstest=true'
             if (project.hasProperty('proxytest')) vmArg '-Dprismglass.proxytest=true'
             if (project.hasProperty('bottest')) vmArg '-Dprismglass.bottest=true'
             if (project.hasProperty('rconcmds')) vmArg '-Dprismglass.rconcmds=true'
             if (project.hasProperty('acpreset')) vmArg "-Dprismglass.acpreset=${project.property('acpreset')}"
             if (project.hasProperty('combattest')) vmArg '-Dprismglass.combattest=true'
+            if (project.hasProperty('behindtest')) vmArg '-Dprismglass.behindtest=true'
+            if (project.hasProperty('inspecttest')) vmArg '-Dprismglass.inspecttest=true'
+            if (project.hasProperty('modtest')) vmArg '-Dprismglass.modtest=true'
+            if (project.hasProperty('modcases')) vmArg "-Dprismglass.modcases=${project.property('modcases')}"
             if (project.hasProperty('xraytest')) vmArg '-Dprismglass.xraytest=true'
             if (project.hasProperty('streamtest')) vmArg '-Dprismglass.streamtest=true'
             if (project.hasProperty('nosp')) vmArg '-Dprismglass.streamtest.nosp=true'

@@ -1,0 +1,162 @@
+// Prism Glass - PluginScanner signature database.
+//
+// Relaxed JSON: // comments, trailing commas and 'single quotes' are fine. To add your own plugins, do NOT edit this
+// file; create  <game dir>/prism/plugin_signatures.json  in the same format and run  .plugins reload .
+// An entry there with the same id replaces the bundled one; "remove": ["id"] at the top level drops a bundled one.
+//
+// One entry = what a plugin looks like from the client. Only id, name and kind are required. All names are lowercase
+// except "name" (what is printed).
+//
+//   id        unique key
+//   name      the plugin's real name (also how /version and /plugins print it)
+//   kind      anticheat | permissions | admin | protection | world | economy | chat | auth | library | protocol |
+//             proxy | software | command-filter | profiler | mod-support | plugin
+//   ns        namespaces the plugin registers commands under: "luckperms" for "luckperms:lp" (one hit = high confidence)
+//   cmds      distinctive command names, no leading slash ("/wand" for WorldEdit's //wand): one hit is a good sign
+//   weak      names other plugins also use: they only add up to a low/medium sign
+//   shapes    [{"has": [sub-commands], "min": n}] - a command with at least n of these sub-commands is the plugin even
+//             when it was renamed (only visible when the server sends a real Brigadier tree, not Bukkit's "args" blob)
+//   channels  plugin-message channels the server pushes: exact "worldedit:cui", prefix "voicechat:" or "fabric*"
+//   brand / status / pack   regexes on the server brand, the server-list version text, the resource-pack host
+//   ping      anticheats only: "grim" = negative ping ids stepping by one, "transaction" = any ping stream
+//   probe     a command that is harmless without arguments (used by the opt-in error probe)
+//   priority  higher = probed first
+//   builtin   true = ships with the server software (not counted as "the server runs plugins")
+//   bukkit    software only: Bukkit-API based, so plugins are possible
+{
+  "signatures": [
+    // ---- server software and proxies (brand / server-list version) --------------------------------------------
+    {"id": "paper", "name": "Paper", "kind": "software", "bukkit": true, "brand": ["(?i)\\bpaper\\b"], "status": ["(?i)\\bpaper\\b"]},
+    {"id": "spigot", "name": "Spigot", "kind": "software", "bukkit": true, "brand": ["(?i)\\bspigot\\b"], "status": ["(?i)\\bspigot\\b"]},
+    {"id": "craftbukkit", "name": "CraftBukkit", "kind": "software", "bukkit": true, "brand": ["(?i)craftbukkit"], "status": ["(?i)craftbukkit"]},
+    {"id": "purpur", "name": "Purpur", "kind": "software", "bukkit": true, "brand": ["(?i)\\bpurpur\\b"], "status": ["(?i)\\bpurpur\\b"]},
+    {"id": "pufferfish", "name": "Pufferfish", "kind": "software", "bukkit": true, "brand": ["(?i)pufferfish"], "status": ["(?i)pufferfish"]},
+    {"id": "folia", "name": "Folia", "kind": "software", "bukkit": true, "brand": ["(?i)\\bfolia\\b"], "status": ["(?i)\\bfolia\\b"]},
+    {"id": "leaf", "name": "Leaf", "kind": "software", "bukkit": true, "brand": ["(?i)^leaf\\b"], "status": ["(?i)^leaf\\b"]},
+    {"id": "hybrid", "name": "Forge/Bukkit hybrid", "kind": "software", "bukkit": true, "brand": ["(?i)mohist|arclight|catserver|magma|banner|youer"], "status": ["(?i)mohist|arclight|catserver|magma|banner|youer"]},
+    {"id": "fabric-server", "name": "Fabric server", "kind": "software", "brand": ["(?i)\\bfabric\\b"]},
+    {"id": "quilt-server", "name": "Quilt server", "kind": "software", "brand": ["(?i)\\bquilt\\b"]},
+    {"id": "neoforge-server", "name": "NeoForge server", "kind": "software", "brand": ["(?i)neoforge"]},
+    {"id": "forge-server", "name": "Forge server", "kind": "software", "brand": ["(?i)^forge\\b"]},
+    {"id": "vanilla", "name": "Vanilla", "kind": "software", "brand": ["(?i)^vanilla$"]},
+    {"id": "velocity", "name": "Velocity", "kind": "proxy", "brand": ["(?i)velocity"], "status": ["(?i)velocity"], "channels": ["velocity:"]},
+    {"id": "bungeecord", "name": "BungeeCord", "kind": "proxy", "brand": ["(?i)bungee"], "status": ["(?i)bungee"], "channels": ["bungeecord:"]},
+    {"id": "waterfall", "name": "Waterfall", "kind": "proxy", "brand": ["(?i)waterfall"], "status": ["(?i)waterfall"]},
+    {"id": "flamecord", "name": "FlameCord", "kind": "proxy", "brand": ["(?i)flamecord"], "status": ["(?i)flamecord"]},
+
+    // ---- anticheats --------------------------------------------------------------------------------------------
+    {"id": "grimac", "name": "GrimAC", "kind": "anticheat", "ns": ["grimac", "grim"], "cmds": ["grim", "grimac"], "ping": "grim", "probe": "grim", "priority": 90,
+     "shapes": [{"has": ["alerts", "verbose", "profile", "perf", "spectate", "brands", "history", "diagnostics", "sendalert", "stopspectating"], "min": 4}],
+     "note": "Sends a negative-id ping before and after every tick (its latency compensation), which is visible without any command."},
+    {"id": "nocheatplus", "name": "NoCheatPlus", "kind": "anticheat", "ns": ["nocheatplus"], "cmds": ["ncp", "nocheatplus", "nocheat"], "weak": ["nc"], "probe": "ncp", "priority": 85,
+     "shapes": [{"has": ["inspect", "notify", "removeplayer", "exemptions", "lag", "commands", "reload", "version", "info"], "min": 4}]},
+    {"id": "vulcan", "name": "Vulcan", "kind": "anticheat", "ns": ["vulcan"], "cmds": ["vulcan"], "ping": "transaction", "probe": "vulcan", "priority": 80},
+    {"id": "matrix", "name": "Matrix", "kind": "anticheat", "ns": ["matrix"], "cmds": ["matrix"], "ping": "transaction", "priority": 70},
+    {"id": "intave", "name": "Intave", "kind": "anticheat", "ns": ["intave"], "cmds": ["intave"], "ping": "transaction", "priority": 70},
+    {"id": "polar", "name": "Polar", "kind": "anticheat", "ns": ["polar"], "cmds": ["polar"], "ping": "transaction", "priority": 70},
+    {"id": "verus", "name": "Verus", "kind": "anticheat", "ns": ["verus"], "cmds": ["verus"], "ping": "transaction", "priority": 60},
+    {"id": "spartan", "name": "Spartan", "kind": "anticheat", "ns": ["spartan"], "cmds": ["spartan"], "priority": 60},
+    {"id": "aac", "name": "Advanced AntiCheat", "kind": "anticheat", "ns": ["aac", "advancedanticheat"], "cmds": ["aac"], "priority": 60},
+    {"id": "karhu", "name": "Karhu", "kind": "anticheat", "ns": ["karhu"], "cmds": ["karhu"], "ping": "transaction", "priority": 60},
+    {"id": "themis", "name": "Themis", "kind": "anticheat", "ns": ["themis"], "cmds": ["themis"], "priority": 50},
+    {"id": "negativity", "name": "Negativity", "kind": "anticheat", "ns": ["negativity"], "cmds": ["negativity", "neg"], "priority": 50},
+    {"id": "kauri", "name": "Kauri", "kind": "anticheat", "ns": ["kauri"], "cmds": ["kauri"], "ping": "transaction", "priority": 50},
+    {"id": "hawk", "name": "HawkAC", "kind": "anticheat", "ns": ["hawk", "hawkac"], "cmds": ["hawk"], "priority": 40},
+    {"id": "reflex", "name": "Reflex", "kind": "anticheat", "ns": ["reflex"], "cmds": ["reflex"], "priority": 40},
+    {"id": "horizon", "name": "Horizon", "kind": "anticheat", "ns": ["horizon"], "cmds": ["horizon"], "priority": 40},
+    {"id": "anticheatreloaded", "name": "AntiCheatReloaded", "kind": "anticheat", "ns": ["anticheatreloaded"], "weak": ["anticheat"], "priority": 30},
+    {"id": "orebfuscator", "name": "Orebfuscator", "kind": "world", "ns": ["orebfuscator"], "cmds": ["orebfuscator", "ofc"], "note": "Anti-xray."},
+
+    // ---- permissions / admin ----------------------------------------------------------------------------------
+    {"id": "luckperms", "name": "LuckPerms", "kind": "permissions", "ns": ["luckperms"], "cmds": ["lp", "luckperms"], "weak": ["perm", "perms", "permission", "permissions"],
+     "channels": ["luckperms:"], "probe": "lp", "priority": 100},
+    {"id": "permissionsex", "name": "PermissionsEx", "kind": "permissions", "ns": ["permissionsex"], "cmds": ["pex"]},
+    {"id": "groupmanager", "name": "GroupManager", "kind": "permissions", "ns": ["groupmanager"], "cmds": ["manuadd", "mangadd", "manselect", "mansave", "manload", "manwhois"]},
+    {"id": "essentials", "name": "Essentials", "kind": "admin", "probe": "ess", "priority": 95,
+     "ns": ["essentials", "essentialsx", "essentialsspawn", "essentialschat", "essentialsprotect", "essentialsantibuild", "essentialsgeoip", "essentialsdiscord"],
+     "cmds": ["essentials", "ess", "eco", "socialspy", "realname", "tpahere", "tpaall", "tpaccept", "tpdeny"],
+     "weak": ["sethome", "delhome", "setwarp", "delwarp", "tpa", "home", "homes", "warp", "warps", "back", "spawn", "setspawn", "nick", "afk", "seen", "mail", "kit", "kits",
+              "god", "fly", "heal", "feed", "vanish", "repair", "hat", "ptime", "pweather", "jail", "mute", "tempban", "banip", "unbanip", "baltop", "balance", "bal", "pay"],
+     "note": "Weak command matches fit EssentialsX, CMI and similar suites alike."},
+    {"id": "cmi", "name": "CMI", "kind": "admin", "ns": ["cmi", "cmilib"], "cmds": ["cmi"]},
+    {"id": "litebans", "name": "LiteBans", "kind": "admin", "ns": ["litebans"], "cmds": ["litebans", "staffhistory", "dupeip", "checkban", "lastuuid", "togglebans"], "probe": "litebans"},
+    {"id": "advancedban", "name": "AdvancedBan", "kind": "admin", "ns": ["advancedban"], "cmds": ["advancedban"]},
+    {"id": "coreprotect", "name": "CoreProtect", "kind": "admin", "ns": ["coreprotect"], "cmds": ["coreprotect", "co", "core"], "probe": "co", "priority": 85},
+    {"id": "discordsrv", "name": "DiscordSRV", "kind": "chat", "ns": ["discordsrv"], "cmds": ["discordsrv"], "weak": ["discord"]},
+    {"id": "chatcontrol", "name": "ChatControl", "kind": "chat", "ns": ["chatcontrol", "chatcontrolred"], "cmds": ["chatcontrol", "chc"]},
+    {"id": "tab", "name": "TAB", "kind": "chat", "ns": ["tab"], "cmds": ["tab"]},
+    {"id": "placeholderapi", "name": "PlaceholderAPI", "kind": "library", "ns": ["placeholderapi"], "cmds": ["placeholderapi", "papi"]},
+    {"id": "vault", "name": "Vault", "kind": "library", "ns": ["vault"], "cmds": ["vault-info", "vault-convert"]},
+    {"id": "protocollib", "name": "ProtocolLib", "kind": "library", "ns": ["protocollib"], "cmds": ["protocol"], "weak": ["packet", "filter", "packetlog"],
+     "note": "Many command- and plugin-hiding plugins are built on it."},
+    {"id": "packetevents", "name": "PacketEvents", "kind": "library", "ns": ["packetevents"]},
+    {"id": "commandwhitelist", "name": "CommandWhitelist", "kind": "command-filter", "ns": ["commandwhitelist"], "cmds": ["commandwhitelist"], "priority": 50,
+     "note": "Hides every command that is not on its list from the tree and from tab-complete."},
+
+    // ---- world / protection -----------------------------------------------------------------------------------
+    {"id": "worldedit", "name": "WorldEdit", "kind": "world", "ns": ["worldedit"], "channels": ["worldedit:cui"], "probe": "we", "priority": 95,
+     "cmds": ["worldedit", "we", "/wand", "/pos1", "/pos2", "/hpos1", "/hpos2", "/schem", "/schematic", "/sel", "/desel", "/brush", "/replace", "/undo", "/redo"]},
+    {"id": "fawe", "name": "FastAsyncWorldEdit", "kind": "world", "ns": ["fastasyncworldedit", "fawe"], "cmds": ["fawe", "fastasyncworldedit", "/cfi", "/fast", "/anvil"]},
+    {"id": "worldguard", "name": "WorldGuard", "kind": "protection", "ns": ["worldguard"], "cmds": ["worldguard", "wg", "rg"], "weak": ["region", "regions"], "probe": "wg", "priority": 90},
+    {"id": "griefprevention", "name": "GriefPrevention", "kind": "protection", "ns": ["griefprevention"],
+     "cmds": ["griefprevention", "abandonclaim", "abandonallclaims", "trustlist", "containertrust", "accesstrust", "claimslist", "adjustbonusclaimblocks", "claimexplosions", "restorenature"],
+     "weak": ["trust", "untrust", "claim", "subdivideclaims", "extendclaim"]},
+    {"id": "multiverse", "name": "Multiverse-Core", "kind": "world", "ns": ["multiverse-core", "multiverse"], "cmds": ["mv", "mvtp", "mvconfirm", "mvm", "mvwho"], "probe": "mv"},
+    {"id": "plotsquared", "name": "PlotSquared", "kind": "world", "ns": ["plotsquared"], "cmds": ["plotsquared", "p2"], "weak": ["plot", "plots", "plotme"]},
+    {"id": "dynmap", "name": "Dynmap", "kind": "world", "ns": ["dynmap"], "cmds": ["dynmap"]},
+    {"id": "bluemap", "name": "BlueMap", "kind": "world", "ns": ["bluemap"], "cmds": ["bluemap"]},
+    {"id": "chunky", "name": "Chunky", "kind": "world", "ns": ["chunky"], "cmds": ["chunky"]},
+    {"id": "clearlag", "name": "ClearLag", "kind": "world", "ns": ["clearlag"], "cmds": ["clearlag", "lagg"]},
+    {"id": "worldborder", "name": "WorldBorder", "kind": "world", "ns": ["worldborder"], "weak": ["wb"]},
+    {"id": "spark", "name": "spark", "kind": "profiler", "builtin": true, "ns": ["spark"], "cmds": ["spark", "sparkb", "sparkv", "sparkc"], "note": "Bundled with Paper, so it says nothing about the server's own plugins."},
+
+    // ---- gameplay / economy -----------------------------------------------------------------------------------
+    {"id": "citizens", "name": "Citizens", "kind": "plugin", "ns": ["citizens"], "cmds": ["citizens"], "weak": ["npc", "trait", "waypoints"], "probe": "citizens"},
+    {"id": "mythicmobs", "name": "MythicMobs", "kind": "plugin", "ns": ["mythicmobs"], "cmds": ["mythicmobs", "mythicmob"], "weak": ["mm", "mythic"]},
+    {"id": "modelengine", "name": "ModelEngine", "kind": "plugin", "ns": ["modelengine"], "cmds": ["modelengine", "meg"]},
+    {"id": "mcmmo", "name": "mcMMO", "kind": "plugin", "ns": ["mcmmo"], "cmds": ["mcmmo", "mctop", "mcstats", "mcrank", "mcability", "mcscoreboard", "mcrefresh", "mmoinfo", "xprate", "skillreset", "mmoedit"]},
+    {"id": "towny", "name": "Towny", "kind": "plugin", "ns": ["towny"], "cmds": ["towny", "townyadmin", "townyworld", "resident"], "weak": ["town", "nation", "plot"]},
+    {"id": "factions", "name": "Factions", "kind": "plugin", "ns": ["factions", "factionsuuid", "saberfactions"], "cmds": ["factions"], "weak": ["f"]},
+    {"id": "jobs", "name": "Jobs", "kind": "economy", "ns": ["jobs"], "cmds": ["jobs"]},
+    {"id": "chestshop", "name": "ChestShop", "kind": "economy", "ns": ["chestshop"], "cmds": ["chestshop", "cstoggle"]},
+    {"id": "shopguiplus", "name": "ShopGUIPlus", "kind": "economy", "ns": ["shopguiplus"], "cmds": ["shopguiplus"]},
+    {"id": "slimefun", "name": "Slimefun", "kind": "plugin", "ns": ["slimefun"], "cmds": ["slimefun", "sf"]},
+    {"id": "skript", "name": "Skript", "kind": "plugin", "ns": ["skript"], "cmds": ["skript"]},
+    {"id": "decentholograms", "name": "DecentHolograms", "kind": "plugin", "ns": ["decentholograms"], "cmds": ["decentholograms", "dh"], "weak": ["holograms"]},
+    {"id": "holographicdisplays", "name": "HolographicDisplays", "kind": "plugin", "ns": ["holographicdisplays"], "cmds": ["holographicdisplays", "hd"]},
+    {"id": "itemsadder", "name": "ItemsAdder", "kind": "plugin", "ns": ["itemsadder"], "cmds": ["itemsadder", "iazip", "iaget", "iagive"], "pack": ["(?i)itemsadder|lobfile"]},
+    {"id": "oraxen", "name": "Oraxen", "kind": "plugin", "ns": ["oraxen"], "cmds": ["oraxen"], "pack": ["(?i)oraxen"]},
+    {"id": "nexo", "name": "Nexo", "kind": "plugin", "ns": ["nexo"], "cmds": ["nexo"], "pack": ["(?i)nexomc|\\bnexo\\b"]},
+
+    // ---- login / skins ------------------------------------------------------------------------------------------
+    {"id": "authme", "name": "AuthMe", "kind": "auth", "ns": ["authme", "authmereloaded"], "cmds": ["authme"], "weak": ["login", "register", "unregister", "changepassword", "logout", "captcha", "verification"]},
+    {"id": "nlogin", "name": "nLogin", "kind": "auth", "ns": ["nlogin"], "cmds": ["nlogin"]},
+    {"id": "fastlogin", "name": "FastLogin", "kind": "auth", "ns": ["fastlogin"], "cmds": ["fastlogin"], "weak": ["premium", "cracked"]},
+    {"id": "skinsrestorer", "name": "SkinsRestorer", "kind": "auth", "ns": ["skinsrestorer"], "cmds": ["skinsrestorer", "sr"], "weak": ["skin", "skins"]},
+
+    // ---- version translation / Bedrock --------------------------------------------------------------------------
+    {"id": "viaversion", "name": "ViaVersion", "kind": "protocol", "ns": ["viaversion"], "cmds": ["viaversion", "viaver", "vvbukkit"], "probe": "viaversion", "priority": 80,
+     "shapes": [{"has": ["list", "dump", "dontbugme", "autoteam", "displayleak", "debug", "reload"], "min": 3}]},
+    {"id": "viabackwards", "name": "ViaBackwards", "kind": "protocol", "ns": ["viabackwards"], "cmds": ["viabackwards", "vb"]},
+    {"id": "viarewind", "name": "ViaRewind", "kind": "protocol", "ns": ["viarewind"], "cmds": ["viarewind"]},
+    {"id": "protocolsupport", "name": "ProtocolSupport", "kind": "protocol", "ns": ["protocolsupport"], "cmds": ["protocolsupport"], "weak": ["ps"]},
+    {"id": "geyser", "name": "Geyser", "kind": "protocol", "ns": ["geyser-spigot", "geyser", "geyser-paper"], "cmds": ["geyser"]},
+    {"id": "floodgate", "name": "Floodgate", "kind": "protocol", "ns": ["floodgate"], "cmds": ["floodgate", "linkaccount", "unlinkaccount"], "channels": ["floodgate:"]},
+
+    // ---- client integrations (what the server pushes over plugin channels) --------------------------------------
+    // (fabric-api and forge-mods are "software": server-side mods, not plugins)
+    {"id": "voicechat", "name": "Simple Voice Chat", "kind": "mod-support", "ns": ["voicechat"], "cmds": ["voicechat"], "channels": ["voicechat:"]},
+    {"id": "xaero", "name": "Xaero's map rules", "kind": "mod-support", "channels": ["xaerominimap:", "xaeroworldmap:"]},
+    {"id": "journeymap", "name": "JourneyMap server", "kind": "mod-support", "ns": ["journeymap"], "channels": ["journeymap:"]},
+    {"id": "voxelmap", "name": "VoxelMap settings", "kind": "mod-support", "channels": ["voxelmap:"]},
+    {"id": "wdl", "name": "World Downloader control", "kind": "mod-support", "channels": ["wdl:"], "note": "A server that talks to World Downloader on purpose (to allow or block it)."},
+    {"id": "vivecraft", "name": "Vivecraft", "kind": "mod-support", "ns": ["vivecraft"], "cmds": ["vivecraft"], "channels": ["vivecraft:"]},
+    {"id": "labymod", "name": "LabyMod server API", "kind": "mod-support", "channels": ["labymod3:", "labymod:"]},
+    {"id": "apollo", "name": "Lunar Client Apollo", "kind": "mod-support", "channels": ["apollo:", "lunar:"]},
+    {"id": "badlion", "name": "Badlion mod API", "kind": "mod-support", "channels": ["badlion:"]},
+    {"id": "servux", "name": "Servux (litematica helper)", "kind": "mod-support", "channels": ["servux:"]},
+    {"id": "carpet", "name": "Carpet", "kind": "mod-support", "channels": ["carpet:"]},
+    {"id": "fabric-api", "name": "Fabric API (server side)", "kind": "software", "channels": ["fabric*", "c:version", "c:register"]},
+    {"id": "forge-mods", "name": "Forge/NeoForge mods", "kind": "software", "channels": ["fml:", "forge:", "neoforge:"]}
+  ]
+}

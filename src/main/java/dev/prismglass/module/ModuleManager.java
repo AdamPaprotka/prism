@@ -41,9 +41,31 @@ public final class ModuleManager {
     @SuppressWarnings("unchecked")
     public <T extends Module> T get(Class<T> type) { return (T) byClass.get(type); }
 
+    /** Names other clients use for modules Prism has under another name (commands and ClickGUI search take both). */
+    public static final java.util.Map<String, String> ALIASES = java.util.Map.ofEntries(
+        java.util.Map.entry("autocrystal", "CrystalAura"),
+        java.util.Map.entry("citybreaker", "AutoCity"),
+        java.util.Map.entry("blockesp", "Search"),
+        java.util.Map.entry("nobob", "NoRender"),
+        java.util.Map.entry("strafe", "Speed"),
+        java.util.Map.entry("bedbomb", "BedAura"),
+        java.util.Map.entry("wallhack", "Xray"),
+        java.util.Map.entry("expthrower", "AutoXP"),
+        java.util.Map.entry("mazekill", "TunnelKill"),
+        java.util.Map.entry("middleclickextra", "MiddleClick"));
+
     public Module get(String name) {
         for (Module m : modules) if (m.getName().equalsIgnoreCase(name)) return m;
+        String alias = ALIASES.get(name.toLowerCase(java.util.Locale.ROOT));
+        if (alias != null) for (Module m : modules) if (m.getName().equalsIgnoreCase(alias)) return m;
         return null;
+    }
+
+    /** Whether a ClickGUI search hits this module by name or by one of its aliases. */
+    public static boolean matches(Module m, String lowerQuery) {
+        if (m.getName().toLowerCase(java.util.Locale.ROOT).contains(lowerQuery)) return true;
+        for (var e : ALIASES.entrySet()) if (e.getValue().equals(m.getName()) && e.getKey().contains(lowerQuery)) return true;
+        return false;
     }
 
     void markEnabled(Module m) { if (!enabled.contains(m)) enabled.add(m); }

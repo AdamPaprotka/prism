@@ -51,15 +51,38 @@ turns: 55 deg/tick, jitter 1.2), roughly 3.1 reach (we use 3.0), multi-target an
 (kept strict), and a velocity check focused on vertical knockback (try Velocity `VerticalOnly`). Treat it as a
 starting point and report flags the same way.
 
+## Flight on Grim
+
+Hovering in open air cannot be hidden from Grim. Its Simulation check predicts each tick from physics and
+counts the gap to what you sent: below 0.001 blocks is free, above it is a violation, a single tick of 0.1 is an immediate
+setback and the rest piles up as "advantage" (decays x0.999 a tick) until 1 block of it causes a setback. Cancelling gravity costs
+0.078 blocks every tick, so a hover is rubber-banded within about 13 ticks. Measured on Grim 2.3.74 with default config
+(`GrimCases fly-vanilla` / `fly-creative`): Flight Vanilla = Simulation offsets of 1-1.9 blocks and 56 setbacks in 100 ticks, Creative = 19 setbacks.
+
+What Grim has no objection to is standing on something. `Flight` mode **Grim** therefore drives Scaffold (real jumps, real edge sneaks,
+silent rotations) so a block is always under your feet: WASD walks on air (about 3.4 blocks/s), Space climbs (a tower when you stand,
+stairs when you move, about 2 blocks/s), standing still hovers, Shift (DropOnShift) stops placing and lets go of the edge so you drop.
+It needs blocks in the hotbar (about 3-6 a second while moving) and a block to place against when you start. Measured on Grim 2.3.74 (0 alerts, 0 setbacks):
+
+| case | result |
+|---|---|
+| `flygrim-walk` 100 ticks | 17.0 blocks on air |
+| `flygrim-climb` 120 ticks (W + Space) | 17.9 blocks forward, +12.3 up |
+| `flygrim-hover` 120 ticks | stood on air, y unchanged |
+| `flygrim-mix` 280 ticks | walk, climb, tower, strafe, hover, then Shift drop to the ground |
+
+Run them with `./gradlew runClient -Pgrimtest -Pmp=localhost:PORT -Pgrimcases=flygrim-walk,flygrim-climb,flygrim-hover,flygrim-mix`.
+Servers that tuned Grim (lower `max-advantage`, kick punishments, extra block-place checks) can still react to the scaffolding itself.
+
 ## Safe / unsafe by module (Grim)
 
 **Safe by design:** KillAura, Trigger, CrystalAura, Surround, SelfTrap, AutoTrap, HoleFiller, AutoTotem,
 Offhand, AutoArmor, Criticals (Legit), Velocity (JumpReset; GrimBudget stays under the setback/alert limits), Sprint (Legit), Parkour, AutoJump, Sneak,
 AutoWalk, SafeWalk, Scaffold (Extend 0, no Tower), Speed (GrimCollide), NoFall (Bucket), SpeedMine (Packet),
-AutoEat, AutoTool, MiddleClick, every Render module.
+AutoEat, AutoTool, MiddleClick, Flight (Grim mode), every Render module.
 
 **Flags on Grim** (tagged `[Grim-unsafe]` in their descriptions): Criticals Packet/NCP, Velocity
-Cancel/Percent (AntiKB threshold is 0.001), Speed Strafe/Vanilla, Flight, ElytraFly, Step >0.6, Spider, Jesus,
+Cancel/Percent (AntiKB threshold is 0.001), Speed Strafe/Vanilla, Flight (Vanilla/Creative), ElytraFly (Control/Boost), Step >0.6, Spider, Jesus,
 HighJump, LongJump, Glide, AirJump, ReverseStep, FastClimb, NoSlow (prediction based, no mode passes), Timer >1,
 Blink (Timer on release), Burrow (fake positions), NoFall Packet, AntiHunger, Reach >0, Hitboxes, AirPlace,
 AntiLevitation, NoJumpDelay.

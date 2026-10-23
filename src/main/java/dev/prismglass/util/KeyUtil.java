@@ -25,6 +25,14 @@ public final class KeyUtil {
         return tail.isEmpty() ? "Key" + key : Character.toUpperCase(tail.charAt(0)) + tail.substring(1);
     }
 
+    /** Whether a bound key or mouse button is held right now. */
+    public static boolean isDown(int key) {
+        if (key == NONE) return false;
+        var window = net.minecraft.client.Minecraft.getInstance().getWindow();
+        if (isMouse(key)) return GLFW.glfwGetMouseButton(window.handle(), key - MOUSE_OFFSET) == GLFW.GLFW_PRESS;
+        return InputConstants.isKeyDown(window, key);
+    }
+
     /** @return the key code, or Integer.MIN_VALUE when the name is unknown. */
     public static int fromName(String name) {
         String n = name.toLowerCase();

@@ -101,4 +101,25 @@ public final class EntityUtil {
         if (speed != null) base *= 1.0 + 0.2 * (speed.getAmplifier() + 1);
         return base;
     }
+
+    /**
+     * Right-clicks an entity the way vanilla does (MultiPlayerGameMode.interact + swing), but only once the rotation
+     * the server already has points into its box: requests that silent rotation here and returns false until it
+     * does, or while another entity was already interacted with this tick (MultiInteractA). True when sent.
+     */
+    public static boolean interact(Entity e, int priority, double range) {
+        net.minecraft.world.phys.AABB box = e.getBoundingBox();
+        Vec3 eye = mc.player.getEyePosition();
+        if (RotationUtil.distanceToBox(eye, box) > range) return false;
+        Prism.rotations().request(box.getCenter(), priority);
+        if (!Prism.guard().canInteractEntity(e.getId()) || !Prism.rotations().isFacing(box, range)) return false;
+        // where the sent look ray enters the box (the server gets this point relative to the entity)
+        Vec3 end = eye.add(RotationUtil.direction(Prism.rotations().getServerYaw(), Prism.rotations().getServerPitch()).scale(range + 1));
+        Vec3 hit = box.clip(eye, end).orElse(box.getCenter());
+        var result = mc.gameMode.interact(mc.player, e, new net.minecraft.world.phys.EntityHitResult(e, hit), net.minecraft.world.InteractionHand.MAIN_HAND);
+        if (result instanceof net.minecraft.world.InteractionResult.Success s && s.swingSource() == net.minecraft.world.InteractionResult.SwingSource.CLIENT) {
+            mc.player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+        }
+        return true;
+    }
 }

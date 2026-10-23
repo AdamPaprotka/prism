@@ -118,9 +118,21 @@ public final class CommandManager {
             mc.keyboardHandler.setClipboard(Prism.config().exportModules(mods));
             ChatUtil.good("Copied settings of " + mods.size() + " module(s) - paste with .share paste");
         }));
+        add(new Command("pingspike", "pingspike [ticks]", "Lag switch: hold ALL packets in and out. No argument toggles; with ticks it releases after that many ticks.", a -> {
+            var spike = Prism.modules().get(dev.prismglass.module.movement.PingSpike.class);
+            if (mc.player == null || mc.level == null) throw new IllegalStateException("Join a world first");
+            if (a.length == 0) {
+                if (spike.isEnabled()) spike.stop(); else spike.start(0);
+                return;
+            }
+            int ticks;
+            try { ticks = Integer.parseInt(a[0]); } catch (NumberFormatException e) { throw new IllegalArgumentException("Ticks must be a whole number"); }
+            if (ticks < 1 || ticks > 1200) throw new IllegalArgumentException("Ticks must be 1-1200");
+            spike.start(ticks);
+        }, "ps"));
         add(new Command("panic", "panic", "Disable every module.", a -> {
-            for (Module m : Prism.modules().all()) if (m.isEnabled()) m.setEnabled(false);
-            ChatUtil.good("All modules disabled");
+            for (Module m : Prism.modules().all()) if (m.isEnabled() && !(m instanceof dev.prismglass.module.Service)) m.setEnabled(false);
+            ChatUtil.good("All modules disabled (services keep running)");
         }));
         add(new Command("vclip", "vclip <blocks>", "Teleport vertically.", a -> {
             double d = Double.parseDouble(arg(a, 0));
@@ -151,6 +163,48 @@ public final class CommandManager {
                 }
             }
         }, "waypoint", "waypoints"));
+        add(new Command("marker", "marker add <name> circle|sphere [x y z] <radius> | add <name> cuboid <x1 y1 z1 x2 y2 z2> | del <name> | list | clear", "Markers: outlines to plan builds.", a -> {
+            var mk = Prism.modules().get(dev.prismglass.module.render.Markers.class);
+            switch (arg(a, 0).toLowerCase()) {
+                case "add" -> {
+                    String name = arg(a, 1), type = arg(a, 2).toLowerCase();
+                    if (type.equals("cuboid")) {
+                        if (a.length < 9) throw new IllegalArgumentException("Usage: .marker add <name> cuboid x1 y1 z1 x2 y2 z2");
+                        mk.addCuboid(name, Double.parseDouble(a[3]), Double.parseDouble(a[4]), Double.parseDouble(a[5]), Double.parseDouble(a[6]), Double.parseDouble(a[7]), Double.parseDouble(a[8]));
+                    } else if (type.equals("circle") || type.equals("sphere")) {
+                        // ".marker add n circle 5" = centred on you; ".marker add n circle x y z 5" = there
+                        double x = mc.player.getBlockX() + 0.5, y = mc.player.getY(), z = mc.player.getBlockZ() + 0.5, r;
+                        if (a.length >= 7) { x = Double.parseDouble(a[3]); y = Double.parseDouble(a[4]); z = Double.parseDouble(a[5]); r = Double.parseDouble(a[6]); }
+                        else r = Double.parseDouble(arg(a, 3));
+                        mk.addSphere(name, type.equals("sphere"), x, y, z, r);
+                    } else throw new IllegalArgumentException("Type must be circle, sphere or cuboid");
+                    if (!mk.isEnabled()) mk.setEnabled(true);
+                    ChatUtil.good("Marker " + name + " (" + type + ")");
+                }
+                case "del", "remove" -> ChatUtil.info(mk.remove(arg(a, 1)) ? "Removed " + a[1] : "No marker " + a[1]);
+                case "clear" -> { mk.clear(); ChatUtil.good("Markers cleared"); }
+                default -> {
+                    if (mk.markers().isEmpty()) ChatUtil.info("No markers here. .marker add <name> circle <radius>");
+                    for (var m : mk.markers()) ChatUtil.info("§f" + m.name() + " §7" + m.type() + " (" + m.dim() + ")");
+                }
+            }
+        }, "markers", "mk"));
+        add(new Command("ai", "ai [player] | list | forget <player>", "Damage AI Learn: what it learned about a player.", a -> {
+            var ai = Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class);
+            if (a.length == 0 || arg(a, 0).equalsIgnoreCase("list")) {
+                var names = ai.known();
+                ChatUtil.info(names.isEmpty() ? "AI: nobody fought yet" : "AI knows (" + names.size() + "): " + String.join(", ", names));
+                if (!ai.isEnabled()) ChatUtil.info("Turn it on in ClickGUI -> Config -> Services");
+                return;
+            }
+            if (arg(a, 0).equalsIgnoreCase("forget")) { ChatUtil.info(ai.forget(arg(a, 1)) ? "Forgot " + a[1] : "No profile for " + a[1]); return; }
+            ChatUtil.info("AI " + ai.summary(a[0]));
+        }));
+        add(new Command("follow", "follow <player> | off", "Follow: walk after a player.", a -> {
+            var f = Prism.modules().get(dev.prismglass.module.movement.Follow.class);
+            if (a.length == 0 || arg(a, 0).equalsIgnoreCase("off")) { if (f.isEnabled()) f.toggle(); ChatUtil.info("Follow off"); return; }
+            f.follow(a[0]);
+        }));
         add(new Command("pearltest", "pearltest [distance]", "Singleplayer: an enemy pearl is thrown next to you (PearlPredict / AutoPearl test).", a -> {
             double dist = a.length > 0 ? Double.parseDouble(a[0]) : 25;
             Prism.modules().get(dev.prismglass.module.render.PearlPredict.class).spawnTestPearl(dist);
@@ -181,12 +235,14 @@ public final class CommandManager {
                 }
             }
         }));
-        add(new Command("spamdupe", "spamdupe [seconds] | stop", "Servers with /dupe: fill your inventory with what you hold, throw it up, repeat (default: for the item pickup delay).", a -> {
+        add(new Command("spamdupe", "spamdupe [cycles] | stop", "Servers with /dupe: fill your inventory with what you hold, throw it up or put it in chests (Output), repeat for N cycles.", a -> {
             var dupe = Prism.modules().get(dev.prismglass.module.anarchy.SpamDupe.class);
             if (arg(a, 0).equalsIgnoreCase("stop")) { dupe.setEnabled(false); return; }
-            double seconds = a.length > 0 ? Double.parseDouble(a[0]) : 0;
-            dupe.start(seconds);
-            if (dupe.isEnabled()) ChatUtil.good("SpamDupe: running for " + (seconds > 0 ? seconds : dupe.pickupDelay.get()) + "s");
+            int cycles;
+            try { cycles = a.length > 0 ? Integer.parseInt(a[0]) : 0; }
+            catch (NumberFormatException e) { ChatUtil.error("Usage: .spamdupe [cycles] | stop"); return; }
+            dupe.start(cycles);
+            if (dupe.isEnabled()) ChatUtil.good("SpamDupe: " + (cycles > 0 ? cycles : dupe.cyclesSetting.getInt()) + " cycles, " + dupe.output.get());
         }));
         add(new Command("seed", "seed <seed|clear>", "World seed for Xray seed mode.", a -> {
             var xray = Prism.modules().get(dev.prismglass.module.render.Xray.class);
@@ -198,24 +254,35 @@ public final class CommandManager {
             if (!xray.isEnabled()) xray.toggle();
             ChatUtil.good("Seed set to " + dev.prismglass.module.render.Xray.parseSeed(value) + " - Xray is in Seed mode");
         }));
-        add(new Command("plugins", "plugins [probe|last]", "Scan the server's plugins (probe also runs /bukkit:plugins; last reprints the result).", a -> {
+        add(new Command("plugins", "plugins [probe|deep|last|why [name]|reload]", "Scan the server's plugins and whether it hides them (probe also runs /bukkit:plugins; deep adds a letter sweep and the error probe, which run real commands; last reprints; why shows the evidence).", a -> {
             var scanner = Prism.modules().get(dev.prismglass.module.world.PluginScanner.class);
-            if (!scanner.isEnabled()) scanner.setEnabled(true);
             String what = a.length > 0 ? a[0].toLowerCase() : "";
+            if (what.equals("reload")) {
+                var sigs = dev.prismglass.module.world.PluginScanner.reloadSignatures();
+                ChatUtil.good("Signatures: " + sigs.size() + " (" + sigs.bundledCount() + " bundled, " + sigs.userCount() + " from prism/plugin_signatures.json)");
+                for (String p : sigs.problems()) ChatUtil.error(p);
+                return;
+            }
+            if (!scanner.isEnabled()) scanner.setEnabled(true);
+            if (what.equals("why")) { scanner.why(a.length > 1 ? String.join(" ", Arrays.copyOfRange(a, 1, a.length)) : null); return; }
             if (what.equals("last")) {
+                var r = scanner.recompute();
+                ChatUtil.info("Server brand: §f" + (scanner.brand() == null ? "unknown" : scanner.brand()) + " §7- commands " + r.view.verdict().label);
                 var list = scanner.plugins();
-                ChatUtil.info("Server brand: §f" + (scanner.brand() == null ? "unknown" : scanner.brand()));
                 ChatUtil.info(list.isEmpty() ? "No plugins detected yet" : "Plugins (" + list.size() + "): §f" + String.join(", ", list));
                 return;
             }
-            scanner.scan(what.equals("probe"));
+            scanner.scan(what.equals("probe") || what.equals("deep"), what.equals("deep"));
             ChatUtil.info("Scanning plugins...");
         }, "pl", "pluginscan"));
-        add(new Command("joinplayer", "joinplayer [name]", "A real second player: its own connection to this server, logged in as a cracked account (offline-mode servers).", a -> {
-            String name = a.length > 0 ? a[0] : Prism.fakePlayers().randomName();
-            String err = Prism.bots().join(name);
+        add(new Command("joinplayer", "joinplayer [name] [true|false]", "A real second player: its own connection to this server, logged in as a cracked account (offline-mode servers). true = join from a new IP (its own Tor circuit).", a -> {
+            boolean flagOnly = a.length > 0 && (a[0].equalsIgnoreCase("true") || a[0].equalsIgnoreCase("false"));
+            String name = a.length > 0 && !flagOnly ? a[0] : Prism.fakePlayers().randomName();
+            boolean newIp = a.length > 0 && a[a.length - 1].equalsIgnoreCase("true");
+            String err = Prism.bots().join(name, newIp);
             if (err != null) ChatUtil.error(err);
-            else ChatUtil.info("Bot §f" + name + "§7 is connecting" + (Prism.proxies().active() != null ? " through " + Prism.proxies().active().name() : ""));
+            else if (newIp) ChatUtil.info("Bot \u00a7f" + name + "\u00a77 is connecting through Tor on its own circuit (new IP)" + (Prism.proxies().tor().ready() ? "" : ", waiting for Tor to start"));
+            else ChatUtil.info("Bot \u00a7f" + name + "\u00a77 is connecting" + (Prism.proxies().active() != null ? " through " + Prism.proxies().active().name() : ""));
         }, "bot", "jp"));
         add(new Command("leaveplayer", "leaveplayer <name|all>", "Disconnect a bot.", a -> {
             if (a.length == 0 || a[0].equalsIgnoreCase("all")) {
@@ -430,11 +497,12 @@ public final class CommandManager {
             }
             case "elytrabot" -> i == 0 ? List.of("stop") : List.of();
             case "seed" -> i == 0 ? List.of("clear") : List.of();
-            case "plugins" -> i == 0 ? List.of("probe", "last") : List.of();
+            case "plugins" -> i == 0 ? List.of("probe", "deep", "last", "why", "reload") : i == 1 && a[0].equalsIgnoreCase("why") ? Prism.modules().get(dev.prismglass.module.world.PluginScanner.class).result().plugins.stream().map(f -> f.name()).toList() : List.of();
             case "leaveplayer" -> { if (i != 0) yield List.of(); List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
             case "sayplayer" -> { if (i != 0) yield List.of("/"); List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
             case "fakeleave" -> i == 0 ? Prism.fakePlayers().names() : List.of();
             case "switchplayer" -> i == 0 ? Prism.bots().names() : i == 1 ? List.of("drop") : List.of();
+            case "joinplayer" -> i == 1 ? List.of("true", "false") : List.of();
             case "proxy" -> {
                 if (i == 0) yield List.of("list", "add", "del", "use", "off", "tor", "ip", "account");
                 List<String> names = Prism.proxies().all().stream().map(p -> p.name()).toList();
@@ -460,7 +528,20 @@ public final class CommandManager {
                     default -> List.of();
                 };
             }
-            case "spamdupe" -> i == 0 ? List.of("stop", "2", "5", "10") : List.of();
+            case "spamdupe" -> i == 0 ? List.of("stop", "5", "10", "50") : List.of();
+            case "follow" -> { if (i > 0) yield List.of(); List<String> l = new java.util.ArrayList<>(playerNames()); l.add("off"); yield l; }
+            case "ai" -> {
+                var known = Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class).known();
+                if (i == 0) { List<String> l = new java.util.ArrayList<>(known); l.add("list"); l.add("forget"); yield l; }
+                yield i == 1 && a[0].equalsIgnoreCase("forget") ? known : List.of();
+            }
+            case "marker" -> {
+                var mk = Prism.modules().get(dev.prismglass.module.render.Markers.class);
+                if (i == 0) yield List.of("add", "del", "list", "clear");
+                if (i == 1 && (a[0].equalsIgnoreCase("del") || a[0].equalsIgnoreCase("remove"))) yield mk.markers().stream().map(m -> m.name()).toList();
+                if (i == 2 && a[0].equalsIgnoreCase("add")) yield List.of("circle", "sphere", "cuboid");
+                yield List.of();
+            }
             default -> List.of();
         };
     }

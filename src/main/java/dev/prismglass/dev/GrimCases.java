@@ -286,6 +286,85 @@ final class GrimCases {
             }, t -> GrimTest.hold(up(), true));
         }
 
+        add(cases, "scaffold-sprint", 100, pillar, () -> { var sc = on(Scaffold.class); sc.tower.set(false); sc.sprint.set(true); }, t -> {
+            GrimTest.hold(up(), t > 5);
+            GrimTest.hold(sprint(), t > 8);
+            if (t % 20 == 0) GrimTest.log(String.format("info scaffold-sprint t=%d y %.2f z %.2f ground %s teleports %d", t, mc.player.getY(), mc.player.getZ(), mc.player.onGround(), Prism.serverTeleports));
+        });
+        add(cases, "scaffold-climb", 120, pillar, () -> { var sc = on(Scaffold.class); sc.tower.set(true); }, t -> {
+            GrimTest.hold(up(), t > 5);
+            GrimTest.hold(jump(), t > 5);
+            if (t % 20 == 0) GrimTest.log(String.format("info scaffold-climb t=%d y %.2f z %.2f ground %s teleports %d", t, mc.player.getY(), mc.player.getZ(), mc.player.onGround(), Prism.serverTeleports));
+        });
+        // ---- Flight, Grim mode: fly on placed blocks ----
+        String[] flyPrep = {"fill -1 -51 -1 1 -51 1 stone", "tp @s 0 -50 0 0 0", "item replace entity @s hotbar.1 with stone 64",
+            "item replace entity @s hotbar.2 with stone 64", "item replace entity @s hotbar.3 with stone 64"};
+        Runnable flyGrim = () -> on(dev.prismglass.module.movement.Flight.class).mode.parse("Grim");
+        IntConsumer flyGrimLog = t -> {
+            if (t % 20 == 0) GrimTest.log(String.format("info flygrim t=%d x %.2f y %.2f z %.2f ground %s teleports %d", t, mc.player.getX(), mc.player.getY(),
+                mc.player.getZ(), mc.player.onGround(), Prism.serverTeleports));
+        };
+        add(cases, "flygrim-walk", 100, flyPrep, flyGrim, t -> { GrimTest.hold(up(), t > 5); flyGrimLog.accept(t); });
+        add(cases, "flygrim-climb", 120, flyPrep, flyGrim, t -> {
+            GrimTest.hold(up(), t > 5);
+            GrimTest.hold(jump(), t > 5);
+            flyGrimLog.accept(t);
+        });
+        add(cases, "flygrim-hover", 120, flyPrep, flyGrim, t -> { GrimTest.hold(up(), t > 5 && t < 40); flyGrimLog.accept(t); });
+        // forward, climb while moving, tower, strafe, hover, then Shift drops
+        add(cases, "flygrim-mix", 280, flyPrep, flyGrim, t -> {
+            GrimTest.hold(up(), (t > 5 && t < 90) || (t >= 205 && t < 245));
+            GrimTest.hold(jump(), (t >= 50 && t < 130));
+            GrimTest.hold(mc.options.keyLeft, t >= 130 && t < 170);
+            GrimTest.hold(mc.options.keyShift, t >= 205 && t < 245);
+            flyGrimLog.accept(t);
+        });
+        for (boolean spoof : new boolean[]{false, true}) {
+            add(cases, spoof ? "flyfreeze-spoof" : "flyfreeze-plain", 400, new String[]{"tp @s 0 -40 0 0 0"}, () -> {
+                var f = on(dev.prismglass.module.movement.Flight.class);
+                f.mode.parse("Freeze");
+                f.spoofGround.set(spoof);
+            }, t -> {
+                GrimTest.hold(up(), t > 100 && t < 200); // pressing keys must not move us
+                if (t % 50 == 0) GrimTest.log(String.format("info flyfreeze t=%d y %.2f z %.2f teleports %d", t, mc.player.getY(), mc.player.getZ(), Prism.serverTeleports));
+            });
+        }
+        // Freeze, the intended way: stand, jump, it latches at the top of the jump and hangs; keys do nothing; let go and fall
+        add(cases, "flyfreeze-jump", 330, new String[]{"tp @s 0 -59 0 0 0", "effect give @s resistance infinite 4 true"},
+            () -> on(dev.prismglass.module.movement.Flight.class).mode.parse("Freeze"), t -> {
+            var f = Prism.modules().get(dev.prismglass.module.movement.Flight.class);
+            GrimTest.hold(jump(), t >= 5 && t < 8);
+            GrimTest.hold(up(), t > 100 && t < 160);
+            if (t == 250) f.setEnabled(false); // let go: falls the rest of the way
+            if (t % 20 == 0) GrimTest.log(String.format("info flyfreeze t=%d y %.2f vy %.3f frozen %s teleports %d", t, mc.player.getY(), mc.player.getDeltaMovement().y, f.frozen(), Prism.serverTeleports));
+        });
+        // ---- no blocks at all: what happens to a player held still / dragged along in the air ----
+        IntConsumer noflyLog = t -> {
+            if (t % 20 == 0) GrimTest.log(String.format("info nofly t=%d x %.2f y %.2f z %.2f vy %.3f teleports %d", t, mc.player.getX(), mc.player.getY(),
+                mc.player.getZ(), mc.player.getDeltaMovement().y, Prism.serverTeleports));
+        };
+        add(cases, "nofly-freeze", 200, new String[]{"tp @s 0 -40 0 0 0"}, () -> {}, t -> {
+            mc.player.setDeltaMovement(0, 0, 0); // end of tick: next tick moves nothing, then gravity is zeroed again
+            noflyLog.accept(t);
+        });
+        add(cases, "nofly-creep", 100, new String[]{"tp @s 0 -40 0 0 0"}, () -> {}, t -> {
+            mc.player.setDeltaMovement(0, 0, 0.1); // 0.1 b/t forward at constant height
+            noflyLog.accept(t);
+        });
+        // ---- flying with empty hands: how Grim answers each approach ----
+        String[] air = {"tp @s 0 -40 0 0 0"};
+        IntConsumer flyLog = t -> {
+            if (t % 20 == 0) GrimTest.log(String.format("info fly t=%d y %.2f vy %.3f", t, mc.player.getY(), mc.player.getDeltaMovement().y));
+        };
+        add(cases, "fly-vanilla", 100, air, () -> on(dev.prismglass.module.movement.Flight.class).mode.parse("Vanilla"), t -> {
+            GrimTest.hold(up(), t > 20);
+            flyLog.accept(t);
+        });
+        add(cases, "fly-creative", 100, air, () -> on(dev.prismglass.module.movement.Flight.class).mode.parse("Creative"), t -> {
+            GrimTest.hold(up(), t > 20);
+            flyLog.accept(t);
+        });
+
         add(cases, "airplace-vanilla", 40, stone, () -> {
             InvUtil.swap(0, false);
             on(AirPlace.class).mode.parse("Vanilla");

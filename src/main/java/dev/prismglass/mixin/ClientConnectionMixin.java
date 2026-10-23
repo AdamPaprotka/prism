@@ -34,6 +34,9 @@ public abstract class ClientConnectionMixin {
 
     @Inject(method = "genericsFtw", at = @At("HEAD"), cancellable = true)
     private static <T extends PacketListener> void prism$receive(Packet<T> packet, PacketListener listener, CallbackInfo ci) {
-        if (listener instanceof ClientGamePacketListener && !(listener instanceof dev.prismglass.manager.BotPlayers.Marker) && Prism.onPacketReceive(packet)) ci.cancel();
+        boolean bot = listener instanceof dev.prismglass.manager.BotPlayers.Marker;
+        if (!bot && (listener instanceof ClientGamePacketListener || listener instanceof net.minecraft.network.protocol.configuration.ClientConfigurationPacketListener))
+            dev.prismglass.scan.ServerIntel.onReceive(listener, packet); // passive, config phase too
+        if (listener instanceof ClientGamePacketListener && !bot && Prism.onPacketReceive(packet)) ci.cancel();
     }
 }

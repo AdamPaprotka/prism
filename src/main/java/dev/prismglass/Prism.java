@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 
 public class Prism implements ClientModInitializer {
     public static final String NAME = "Prism";
-    public static final String VERSION = "1.6.2";
+    public static final String VERSION = "1.6.3";
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
 
     private static ModuleManager modules;
@@ -44,6 +44,7 @@ public class Prism implements ClientModInitializer {
 
     private static int autosaveTicks;
     private static final boolean COMBAT_TEST = Boolean.getBoolean("prismglass.combattest");
+    private static final boolean BEHIND_TEST = Boolean.getBoolean("prismglass.behindtest");
 
     @Override
     public void onInitializeClient() {
@@ -76,6 +77,8 @@ public class Prism implements ClientModInitializer {
         }));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             guard.onDisconnect();
+            var spike = modules.get(dev.prismglass.module.movement.PingSpike.class);
+            if (spike != null) spike.abort("disconnected");
             fakePlayers.clear();
             invGuard.reset();
             config.save();
@@ -202,6 +205,12 @@ public class Prism implements ClientModInitializer {
 
         // Dev check: -Dprismglass.combattest=true runs an automated KillAura/AutoWalk test in a flat world
         if (Boolean.getBoolean("prismglass.combattest")) dev.prismglass.dev.CombatTest.install();
+        // Dev check: -Dprismglass.behindtest=true runs the AutoWalk Behind test (turning dummy, statue, real zombie)
+        if (BEHIND_TEST) dev.prismglass.dev.BehindTest.install();
+        // Dev check: -Dprismglass.inspecttest=true checks every Inspect clip and screenshots them
+        if (Boolean.getBoolean("prismglass.inspecttest")) dev.prismglass.dev.InspectTest.install();
+        // Dev check: -Dprismglass.modtest=true runs one scripted case per spec module (ModCases)
+        if (Boolean.getBoolean("prismglass.modtest")) dev.prismglass.dev.ModTest.install();
         // Dev check: -Dprismglass.xraytest=true measures the seed ore simulator against a real world
         if (Boolean.getBoolean("prismglass.xraytest")) dev.prismglass.dev.XrayTest.install();
         // Dev check: -Dprismglass.streamtest=true checks StreamProof (capture exclusion, overlay, borderless)
@@ -221,6 +230,7 @@ public class Prism implements ClientModInitializer {
         if (Boolean.getBoolean("prismglass.holotest")) dev.prismglass.dev.HoloTest.install();
         if (Boolean.getBoolean("prismglass.sustest")) dev.prismglass.dev.SusTest.install();
         if (Boolean.getBoolean("prismglass.rebreaktest")) dev.prismglass.dev.RebreakTest.install();
+        if (Boolean.getBoolean("prismglass.pingspiketest")) dev.prismglass.dev.PingSpikeTest.install();
         if (Boolean.getBoolean("prismglass.pflytest")) dev.prismglass.dev.PacketFlyTest.install();
         if (Boolean.getBoolean("prismglass.crystaltest")) dev.prismglass.dev.CrystalTest.install();
         if (Boolean.getBoolean("prismglass.elytrabottest")) dev.prismglass.dev.ElytraBotTest.install();
@@ -300,14 +310,17 @@ public class Prism implements ClientModInitializer {
     /** Every outgoing packet. Returns true to cancel. */
     public static boolean onPacketSend(net.minecraft.network.protocol.Packet<?> packet) {
         if (Minecraft.getInstance().player == null) return false;
+        dev.prismglass.module.movement.PingSpike spike = modules.get(dev.prismglass.module.movement.PingSpike.class);
+        if (spike != null && spike.flushing()) return false; // held packets being released: already went through the hooks
         if (COMBAT_TEST) dev.prismglass.dev.CombatTest.onSend(packet);
+        if (BEHIND_TEST) dev.prismglass.dev.BehindTest.onSend(packet);
         PacketEvent event = new PacketEvent(packet);
         modules.onPacketSend(event);
         if (event.isCancelled()) return true;
         guard.onSend(event);
         if (event.isCancelled()) return true;
         if (packet instanceof ServerboundMovePlayerPacket move) rotations.onSend(move);
-        return false;
+        return spike != null && spike.holdOutgoing(packet);
     }
 
     /** Every incoming packet (netty thread). Returns true to cancel. */
@@ -316,6 +329,8 @@ public class Prism implements ClientModInitializer {
 
     public static boolean onPacketReceive(net.minecraft.network.protocol.Packet<?> packet) {
         if (Minecraft.getInstance().player == null) return false;
+        dev.prismglass.module.movement.PingSpike spike = modules.get(dev.prismglass.module.movement.PingSpike.class);
+        if (spike != null && spike.holdIncoming(packet)) return true; // replayed through here on release
         if (packet instanceof net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket) serverTeleports++;
         PacketEvent event = new PacketEvent(packet);
         modules.onPacketReceive(event);

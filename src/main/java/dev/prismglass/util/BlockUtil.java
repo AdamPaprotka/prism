@@ -2,6 +2,11 @@ package dev.prismglass.util;
 
 import dev.prismglass.Prism;
 import dev.prismglass.module.client.AntiCheat;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -148,7 +153,11 @@ public final class BlockUtil {
      * In Silent rotate mode this may return WAITING for a few ticks while the server rotation turns.
      */
     public static Result place(BlockPos pos, int hotbarSlot, boolean swapBack, int rotationPriority) {
-        if (!budgetLeft() || hotbarSlot < 0 || !canPlace(pos)) return Result.FAILED;
+        if (!budgetLeft() || hotbarSlot < 0) return Result.FAILED;
+        // torches, buttons, carpets... have no collision box: the server places them even with an entity in the way
+        ItemStack stack = mc.player.getInventory().getItem(hotbarSlot);
+        boolean solid = !(stack.getItem() instanceof BlockItem bi) || !bi.getBlock().defaultBlockState().getCollisionShape(mc.level, pos).isEmpty();
+        if (solid ? !canPlace(pos) : !(mc.level.isInWorldBounds(pos) && isReplaceable(pos))) return Result.FAILED;
         AntiCheat ac = Prism.anticheat();
 
         Direction side = getPlaceSide(pos);
@@ -196,6 +205,77 @@ public final class BlockUtil {
         if (switched && swapBack) InvUtil.restore(prev);
         placedThisTick++;
         return result.consumesAction() ? Result.PLACED : Result.FAILED;
+    }
+
+    /**
+     * Uses the item in a hotbar slot on a face of a block (flint and steel on the ground, a bucket on a source...)
+     * with the same anticheat handling as {@link #place}: range to the clicked point, silent rotation that must
+     * already face the block, slot switch only when allowed, swap-back on the next tick. Counts as this tick's place.
+     */
+    public static Result click(BlockPos pos, Direction face, int hotbarSlot, boolean swapBack, int rotationPriority) {
+        if (!budgetLeft() || hotbarSlot < 0) return Result.FAILED;
+        AntiCheat ac = Prism.anticheat();
+        Vec3 hitVec = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(0.5));
+        if (!inPlaceRange(pos)) return Result.FAILED;
+        if (ac.strictDirection.get() && !isFaceVisible(pos, face, mc.player.getEyePosition())) return Result.FAILED;
+        if (ac.strictRaycast.get() && mc.player.getEyePosition().distanceTo(hitVec) > Prism.rotations().serverReach() - 0.05) return Result.FAILED;
+        BlockHitResult hit = new BlockHitResult(hitVec, face, pos, false);
+        float[] rot = RotationUtil.toward(hitVec);
+        switch (ac.placeRotate.get()) {
+            case "Packet" -> Prism.rotations().sendLook(rot[0], rot[1]);
+            case "Silent" -> {
+                Prism.rotations().request(rot[0], rot[1], rotationPriority);
+                if (!Prism.rotations().isFacing(new AABB(pos), ac.placeRange.get())) return Result.WAITING;
+            }
+            default -> {}
+        }
+        int prev = mc.player.getInventory().getSelectedSlot();
+        boolean switched = prev != hotbarSlot;
+        if (switched) {
+            if (!Prism.guard().canSwitchSlot()) return Result.WAITING;
+            InvUtil.swap(hotbarSlot, false);
+        }
+        InteractionResult result = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+        if (result.consumesAction()) mc.player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        if (switched && swapBack) InvUtil.restore(prev);
+        placedThisTick++;
+        return result.consumesAction() ? Result.PLACED : Result.FAILED;
+    }
+
+    /**
+     * What to place, in order, so {@code target} gets something to be placed against: just the target when it
+     * already has a usable face, else a chain of up to {@code maxSupports} support blocks built out from the nearest
+     * solid block (shortest first). Recompute each tick and place the first entry. Empty when no chain fits.
+     * {@code allowed} filters support spots (keep an anvil's drop column clear, stay out of a hole...).
+     */
+    public static List<BlockPos> supportChain(BlockPos target, int maxSupports, Predicate<BlockPos> allowed) {
+        // only a solid block in the way ends it: an entity there (us mid-jump, say) may move, the supports can go now
+        if (!mc.level.isInWorldBounds(target) || !isReplaceable(target)) return List.of();
+        if (getPlaceSide(target) != null) return List.of(target);
+        Map<BlockPos, BlockPos> parent = new HashMap<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        Map<BlockPos, Integer> depth = new HashMap<>();
+        queue.add(target);
+        depth.put(target, 0);
+        while (!queue.isEmpty()) {
+            BlockPos cur = queue.poll();
+            int d = depth.get(cur);
+            if (d >= maxSupports) continue;
+            for (Direction dir : Direction.values()) {
+                BlockPos n = cur.relative(dir);
+                if (depth.containsKey(n) || !allowed.test(n) || !canPlace(n) || !inPlaceRange(n)) continue;
+                parent.put(n, cur);
+                depth.put(n, d + 1);
+                if (getPlaceSide(n) != null) {
+                    // n can be placed now: walk back to the target
+                    List<BlockPos> chain = new ArrayList<>();
+                    for (BlockPos p = n; p != null; p = parent.get(p)) chain.add(p);
+                    return chain;
+                }
+                queue.add(n);
+            }
+        }
+        return List.of();
     }
 
     public static int findBlock(net.minecraft.world.level.block.Block... blocks) {

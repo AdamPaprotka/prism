@@ -4,6 +4,7 @@ import com.google.gson.*;
 import dev.prismglass.Prism;
 import dev.prismglass.gui.ClickGuiScreen;
 import dev.prismglass.module.Module;
+import dev.prismglass.module.Service;
 import dev.prismglass.setting.ColorSetting;
 import dev.prismglass.setting.Setting;
 import net.fabricmc.loader.api.FabricLoader;
@@ -39,8 +40,50 @@ public final class ConfigManager {
                 if (o.has("friends")) for (JsonElement f : o.getAsJsonArray("friends")) Prism.friends().add(f.getAsString());
             }
             loadProfile(active);
+            loadServices();
         } catch (Exception e) {
             Prism.LOG.error("Failed to load config", e);
+        }
+    }
+
+    // ---- services: prism/services.json, outside every profile ---------------------------------------------
+
+    private Path servicesFile() { return root.resolve("services.json"); }
+
+    public void loadServices() {
+        try {
+            if (!Files.exists(servicesFile())) return;
+            JsonObject o = JsonParser.parseString(Files.readString(servicesFile(), StandardCharsets.UTF_8)).getAsJsonObject();
+            for (Module m : Prism.modules().all()) {
+                if (!(m instanceof Service) || !o.has(m.getName())) continue;
+                JsonObject mo = o.getAsJsonObject(m.getName());
+                if (mo.has("settings")) {
+                    JsonObject so = mo.getAsJsonObject("settings");
+                    for (Setting<?> st : m.getSettings()) if (so.has(st.getName())) try { st.load(so.get(st.getName())); } catch (Exception ignored) {}
+                }
+                if (mo.has("enabled")) m.setEnabledSilently(mo.get("enabled").getAsBoolean());
+            }
+        } catch (Exception e) {
+            Prism.LOG.error("Failed to load services", e);
+        }
+    }
+
+    public void saveServices() {
+        try {
+            Files.createDirectories(root);
+            JsonObject o = new JsonObject();
+            for (Module m : Prism.modules().all()) {
+                if (!(m instanceof Service)) continue;
+                JsonObject mo = new JsonObject();
+                mo.addProperty("enabled", m.isEnabled());
+                JsonObject so = new JsonObject();
+                for (Setting<?> st : m.getSettings()) so.add(st.getName(), st.save());
+                mo.add("settings", so);
+                o.add(m.getName(), mo);
+            }
+            write(servicesFile(), o);
+        } catch (Exception e) {
+            Prism.LOG.error("Failed to save services", e);
         }
     }
 
@@ -55,6 +98,7 @@ public final class ConfigManager {
             o.add("friends", friends);
             write(root.resolve("prism.json"), o);
             saveProfile(active);
+            saveServices();
         } catch (Exception e) {
             Prism.LOG.error("Failed to save config", e);
         }
@@ -67,7 +111,7 @@ public final class ConfigManager {
             JsonObject o = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
             JsonObject mods = o.has("modules") ? o.getAsJsonObject("modules") : new JsonObject();
             for (Module m : Prism.modules().all()) {
-                if (!mods.has(m.getName())) continue;
+                if (m instanceof Service || !mods.has(m.getName())) continue; // services live in services.json
                 JsonObject mo = mods.getAsJsonObject(m.getName());
                 if (mo.has("settings")) {
                     JsonObject so = mo.getAsJsonObject("settings");
@@ -92,6 +136,7 @@ public final class ConfigManager {
         JsonObject o = new JsonObject();
         JsonObject mods = new JsonObject();
         for (Module m : Prism.modules().all()) {
+            if (m instanceof Service) continue;
             JsonObject mo = new JsonObject();
             mo.addProperty("enabled", m.isEnabled());
             JsonObject so = new JsonObject();

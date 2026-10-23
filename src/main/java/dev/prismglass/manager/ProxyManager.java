@@ -123,24 +123,78 @@ public final class ProxyManager {
 
     // ---- netty ------------------------------------------------------------------------------------------
 
+    // ---- per-connection override (bots with their own Tor circuit) --------------------------------------------
+
+    private final Object overrideLock = new Object();
+    private volatile java.util.function.Supplier<ChannelHandler> pendingOverride;
+    private volatile java.util.concurrent.CountDownLatch overrideTaken;
+
+    /**
+     * Run {@code connect} with a one-off proxy handler for the connection it opens. The pipeline hook runs on the
+     * Netty thread, so the handler is parked here and the first new client connection takes it; we hold the lock
+     * until it did, so two overrides never mix.
+     */
+    public void connectWith(java.util.function.Supplier<ChannelHandler> override, Runnable connect) throws InterruptedException {
+        synchronized (overrideLock) {
+            java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            overrideTaken = latch;
+            pendingOverride = override;
+            try {
+                connect.run();
+                latch.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            } finally {
+                pendingOverride = null;
+                overrideTaken = null;
+            }
+        }
+    }
+
+    /**
+     * Netty gives a proxy 10 s to connect by default. Tor often needs more: Minecraft ports are not in most exits'
+     * policies (the reduced policy has no 25565, let alone a host's random port), so Tor has to find and build a
+     * circuit through an exit that allows the port.
+     */
+    private static final long PROXY_CONNECT_TIMEOUT_MS = 60_000;
+
+    private static ChannelHandler timed(io.netty.handler.proxy.ProxyHandler h) {
+        h.setConnectTimeoutMillis(PROXY_CONNECT_TIMEOUT_MS);
+        return h;
+    }
+
+    /** Tor circuit of its own: Tor keeps streams with different SOCKS credentials on separate circuits. */
+    public ChannelHandler isolatedTorHandler(String tag) {
+        PROXIED_CONNECTIONS.incrementAndGet();
+        return timed(new Socks5ProxyHandler(new InetSocketAddress(TorRunner.HOST, TorRunner.SOCKS_PORT), "prism-" + tag, "x"));
+    }
+
     /** Handler for a new outgoing connection, or null for direct. Netty thread. */
     public ChannelHandler handler() {
+        java.util.function.Supplier<ChannelHandler> o = pendingOverride;
+        if (o != null) {
+            pendingOverride = null;
+            java.util.concurrent.CountDownLatch l = overrideTaken;
+            if (l != null) l.countDown();
+            return o.get();
+        }
         Proxy p = active;
         if (p == null) return null;
         if (p.isTor() && !tor.ready()) tor.start(); // still connects through 9050 once tor is up; the handshake simply waits
         InetSocketAddress addr = new InetSocketAddress(p.host(), p.port());
         PROXIED_CONNECTIONS.incrementAndGet();
-        return switch (p.type()) {
+        return timed(switch (p.type()) {
             case SOCKS5 -> p.user() == null ? new Socks5ProxyHandler(addr) : new Socks5ProxyHandler(addr, p.user(), p.pass());
             case SOCKS4 -> p.user() == null ? new Socks4ProxyHandler(addr) : new Socks4ProxyHandler(addr, p.user());
             case HTTP -> p.user() == null ? new HttpProxyHandler(addr) : new HttpProxyHandler(addr, p.user(), p.pass());
-        };
+        });
     }
 
     // ---- ip check ---------------------------------------------------------------------------------------
 
     /** Public IP seen by the internet through this proxy (null = direct). Blocking: call off-thread. */
     public static String publicIp(Proxy p) throws IOException {
+        // SOCKS5 with credentials: do the handshake ourselves. Java's built-in SOCKS client may skip the username, and
+        // with Tor the username IS the circuit, so a bot's "own circuit" IP must be asked with exactly its credentials.
+        if (p != null && p.type() == Type.SOCKS5 && p.user() != null) return ipViaSocks5(p);
         java.net.Proxy jp = p == null ? java.net.Proxy.NO_PROXY
             : new java.net.Proxy(p.type() == Type.HTTP ? java.net.Proxy.Type.HTTP : java.net.Proxy.Type.SOCKS, new InetSocketAddress(p.host(), p.port()));
         if (p != null && p.user() != null) {
@@ -158,6 +212,43 @@ public final class ProxyManager {
             return r.readLine().trim();
         } finally {
             c.disconnect();
+        }
+    }
+
+    private static String ipViaSocks5(Proxy p) throws IOException {
+        String host = "api.ipify.org";
+        try (java.net.Socket raw = new java.net.Socket()) {
+            raw.connect(new InetSocketAddress(p.host(), p.port()), 10000);
+            raw.setSoTimeout(20000);
+            java.io.DataOutputStream out = new java.io.DataOutputStream(raw.getOutputStream());
+            java.io.DataInputStream in = new java.io.DataInputStream(raw.getInputStream());
+            out.write(new byte[]{5, 1, 2}); // SOCKS5, one method: username/password only
+            if (in.readUnsignedByte() != 5 || in.readUnsignedByte() != 2) throw new IOException("proxy refused username/password auth");
+            byte[] u = p.user().getBytes(StandardCharsets.UTF_8), pw = (p.pass() == null ? "" : p.pass()).getBytes(StandardCharsets.UTF_8);
+            out.writeByte(1); out.writeByte(u.length); out.write(u); out.writeByte(pw.length); out.write(pw);
+            if (in.readUnsignedByte() != 1 || in.readUnsignedByte() != 0) throw new IOException("proxy rejected the credentials");
+            byte[] h = host.getBytes(StandardCharsets.US_ASCII);
+            out.write(new byte[]{5, 1, 0, 3}); out.writeByte(h.length); out.write(h); out.writeShort(443);
+            if (in.readUnsignedByte() != 5) throw new IOException("bad SOCKS reply");
+            int rep = in.readUnsignedByte();
+            if (rep != 0) throw new IOException("SOCKS connect failed (" + rep + ")");
+            in.readUnsignedByte();
+            int atyp = in.readUnsignedByte();
+            int skip = atyp == 1 ? 4 : atyp == 4 ? 16 : in.readUnsignedByte();
+            in.skipNBytes(skip + 2);
+            javax.net.ssl.SSLSocket tls = (javax.net.ssl.SSLSocket) ((javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault()).createSocket(raw, host, 443, true);
+            javax.net.ssl.SSLParameters sp = tls.getSSLParameters();
+            sp.setServerNames(List.of(new javax.net.ssl.SNIHostName(host)));
+            tls.setSSLParameters(sp);
+            tls.startHandshake();
+            tls.getOutputStream().write(("GET /?format=text HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: PrismGlass\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            tls.getOutputStream().flush();
+            String response = new String(tls.getInputStream().readAllBytes(), StandardCharsets.US_ASCII);
+            int body = response.indexOf("\r\n\r\n");
+            if (body < 0 || !response.startsWith("HTTP/1.1 200")) throw new IOException("unexpected answer from ipify");
+            String ip = response.substring(body + 4).trim();
+            if (!ip.matches("[0-9a-fA-F.:]+")) throw new IOException("unexpected body from ipify");
+            return ip;
         }
     }
 

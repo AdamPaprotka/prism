@@ -6,6 +6,7 @@ import dev.prismglass.gui.render.Glass;
 import dev.prismglass.gui.render.PrismLogo;
 import dev.prismglass.module.Category;
 import dev.prismglass.module.Module;
+import dev.prismglass.module.Service;
 import dev.prismglass.module.client.ClickGui;
 import dev.prismglass.setting.*;
 import dev.prismglass.util.ColorUtil;
@@ -76,10 +77,14 @@ public class ClickGuiScreen extends Screen {
         net.minecraft.client.gui.Font f = net.minecraft.client.Minecraft.getInstance().font;
         if (f == null) return min;
         int longest = 0;
-        for (Module m : Prism.modules().byCategory(cat)) longest = Math.max(longest, f.width(m.getName()) + 1); // +1: enabled names have a shadow
+        int count = 0;
+        for (Module m : Prism.modules().byCategory(cat)) {
+            if (m instanceof Service) continue; // not in the panel
+            longest = Math.max(longest, f.width(m.getName()) + 1); // +1: enabled names have a shadow
+            count++;
+        }
         // 8 left padding, the expand marker sits 12 from the right edge
         float names = 8 + longest + gui.freeSpace.getFloat() + 12;
-        int count = Prism.modules().byCategory(cat).size();
         float header = 8 + f.width(cat.title) + 1 + 12 + f.width(count + "/" + count) + 8;
         return Math.max(min, (float) Math.ceil(Math.max(names, header)));
     }
@@ -556,7 +561,52 @@ public class ClickGuiScreen extends Screen {
         }
     }
 
-    private float configHeight() { return 4 * 20 + 14 + SETTING_H + settingsHeight(theme); }
+    private float configHeight() { return 4 * 20 + 14 + SETTING_H + settingsHeight(theme) + servicesHeight(); }
+
+    private List<Service> services() {
+        List<Service> out = new ArrayList<>();
+        for (Module m : Prism.modules().all()) if (m instanceof Service sv) out.add(sv);
+        return out;
+    }
+
+    private float servicesHeight() {
+        List<Service> list = services();
+        if (list.isEmpty()) return 0;
+        float h = SETTING_H + 4;
+        for (Service sv : list) {
+            h += MODULE_H;
+            if (sv.isEnabled()) for (Setting<?> st : sv.serviceSettings()) if (st.isVisible()) h += rowHeight(st);
+        }
+        return h;
+    }
+
+    /** Services: background modules switched on here only (they never show in the panels). */
+    private float drawServices(GuiGraphicsExtractor ctx, float x, float y, float w, int mx, int my, int clipTop, int clipBottom) {
+        List<Service> list = services();
+        if (list.isEmpty()) return y;
+        fill(ctx, (int) x + 2, (int) y, (int) (x + w - 2), (int) y + 1, 0x22FFFFFF);
+        ctx.text(font, "Services", (int) x + 3, (int) y + 4, TEXT, true);
+        y += SETTING_H;
+        int acc = theme.accent.color();
+        for (Service sv : list) {
+            boolean hover = mouseIn(x, y, w, MODULE_H) && my >= clipTop && my <= clipBottom;
+            if (hover) {
+                fill(ctx, (int) x, (int) y, (int) (x + w), (int) (y + MODULE_H), 0x18FFFFFF);
+                tooltip = sv.getDescription();
+            }
+            ctx.text(font, sv.getName(), (int) x + 6, (int) y + 4, sv.isEnabled() ? TEXT : DIM, sv.isEnabled());
+            String state = sv.isEnabled() ? "ON" : "OFF";
+            float pw = font.width(state) + 10, px = x + w - pw - 4;
+            Glass.rounded(ctx, px, y + 2, pw, MODULE_H - 4, 3, sv.isEnabled() ? ColorUtil.withAlpha(acc, 150) : 0x30FFFFFF, 0x18FFFFFF);
+            ctx.text(font, state, (int) px + 5, (int) y + 4, sv.isEnabled() ? TEXT : DIM, false);
+            if (y + MODULE_H >= clipTop && y <= clipBottom) hits.add(new Hit(x, y, w, MODULE_H, (b, cx, cy) -> { if (b == 0) sv.toggle(); }, null, null));
+            y += MODULE_H;
+            if (sv.isEnabled()) {
+                for (Setting<?> st : sv.serviceSettings()) if (st.isVisible()) y = drawSetting(ctx, sv, st, x + 6, y, w - 6, mx, my, clipTop, clipBottom);
+            }
+        }
+        return y + 4;
+    }
 
     private void drawConfigMenu(GuiGraphicsExtractor ctx, float x, float y, float w, int mx, int my, int clipTop, int clipBottom) {
         String[] names = {"Save", "Reload", "Reset layout", "Open folder", "Export (copy)", "Import (paste)", "Changelog", "HUD editor"};
@@ -590,6 +640,7 @@ public class ClickGuiScreen extends Screen {
         String line = fresh ? status : "Profile: " + Prism.config().getActive();
         ctx.text(font, line, (int) x + 3, (int) y + 3, fresh ? theme.accent.color() : FAINT, false);
         y += 14;
+        y = drawServices(ctx, x, y, w, mx, my, clipTop, clipBottom); // right under the buttons, before the long theme list
         fill(ctx, (int) x + 2, (int) y, (int) (x + w - 2), (int) y + 1, 0x22FFFFFF);
         ctx.text(font, "ClickGUI", (int) x + 3, (int) y + 4, TEXT, true);
         y += SETTING_H;
@@ -928,11 +979,11 @@ public class ClickGuiScreen extends Screen {
 
     private List<Module> filtered(Category cat) {
         List<Module> all = new java.util.ArrayList<>(Prism.modules().byCategory(cat));
-        all.removeIf(m -> m instanceof dev.prismglass.module.client.KeyActions); // shown in the Keybinds tab instead
+        all.removeIf(m -> m instanceof dev.prismglass.module.client.KeyActions || m instanceof Service); // Keybinds / Config tabs instead
         if (search.isEmpty()) return all;
         String q = search.toLowerCase(Locale.ROOT);
         List<Module> out = new ArrayList<>();
-        for (Module m : all) if (m.getName().toLowerCase(Locale.ROOT).contains(q)) out.add(m);
+        for (Module m : all) if (dev.prismglass.module.ModuleManager.matches(m, q)) out.add(m);
         return out;
     }
 

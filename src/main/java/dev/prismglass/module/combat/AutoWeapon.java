@@ -15,7 +15,9 @@ public class AutoWeapon extends Module {
 
     @Override
     public void onAttack(Entity target) {
-        int slot = CombatUtil.bestWeapon(preferAxe.get());
+        // ShieldBypass: a hit into a raised shield needs the axe, whatever the best weapon is
+        ShieldBypass sb = Prism.modules().get(ShieldBypass.class);
+        int slot = CombatUtil.bestWeapon(preferAxe.get() || (sb != null && sb.wantsAxe(target)));
         // switching before the attack packet in the same tick is fine (PacketOrderE only flags after)
         if (slot != -1 && Prism.guard().canSwitchSlot()) InvUtil.swap(slot, false);
     }

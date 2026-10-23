@@ -1,0 +1,7 @@
+name: CoreProtect
+main: dev.prismlab.StubPlugin
+version: 0.0-lab-stub
+api-version: '26.1'
+commands:
+  coreprotect:
+    aliases: [co, core]

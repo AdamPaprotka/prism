@@ -24,7 +24,7 @@ import java.util.List;
  * by KBAngle bends where they fly. On Grim the yaw has to keep pointing into their hitbox, which allows only a few
  * degrees; KBFull uses the whole angle (vanilla / no-anticheat servers).
  */
-public class KillAura extends Module {
+public class KillAura extends Module implements dev.prismglass.manager.WalkGoal {
     public final NumberSetting range = num("Range", 3.0, 1, 6, 0.05, "Attack range (capped by AntiCheat).");
     public final NumberSetting wallRange = num("WallRange", 0, 0, 6, 0.05, "Range through walls (0 = never).");
     public final NumberSetting rotateRange = num("RotateRange", 4.5, 1, 8, 0.1, "Start turning toward targets at this range.");
@@ -39,10 +39,14 @@ public class KillAura extends Module {
     public final BoolSetting pauseEating = bool("PauseOnUse", true, "Pause while eating/drinking/using.");
     public final BoolSetting pauseCrystal = bool("PauseOnCrystal", true, "Let CrystalAura act first when it has work.");
     public final BoolSetting autoWalk = bool("AutoWalk", false, "Walk toward the target (real key presses; any WASD you press takes over).");
+    public final ModeSetting walkMode = mode("WalkMode", "Chase", "AutoWalk: Chase = straight at the target. Behind = circle round and stay behind it (uses AutoWalk's Behind settings).", "Chase", "Behind").visibleWhen(() -> autoWalk.get());
     public final NumberSetting walkStop = num("WalkStop", 2.4, 0.5, 4, 0.1, "AutoWalk: stop this close to the target.");
     public final NumberSetting walkRange = num("WalkRange", 12, 3, 32, 1, "AutoWalk: chase targets up to this far.");
     public final BoolSetting walkJump = bool("WalkJump", true, "AutoWalk: jump over 1-block obstacles.");
     public final BoolSetting walkSprint = bool("WalkSprint", true, "AutoWalk: sprint while chasing (when legal).");
+
+    public final BoolSetting useAI = bool("UseAI", true, "Use AI intelligence too: the Damage AI Learn service picks how to move and leads your aim, learning from every fight.")
+        .visibleWhen(KillAura::aiServiceOn);
 
     public final BoolSetting kbDisplace = bool("KBDisplace", false, "Bend your sprint hits' knockback sideways by KBAngle (the sprint push follows your hit's yaw).");
     public final NumberSetting kbAngle = num("KBAngle", 45, -90, 90, 1, "Knockback angle off the straight line from you, + = to your right.").visibleWhen(() -> kbDisplace.get());
@@ -60,19 +64,47 @@ public class KillAura extends Module {
 
     @Override public void onDisable() { target = null; chase = null; }
 
+    private static boolean aiServiceOn() {
+        var ai = Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class);
+        return ai != null && ai.isEnabled();
+    }
+
+    /** UseAI is on and the service runs: the AI moves and aims. */
+    private boolean ai() { return useAI.get() && aiServiceOn(); }
+
     /** Where AutoWalk should walk this tick, or null. Read by MovementHooks while building input. */
     public Vec3 chasePoint() {
+        if (ai() && chase != null && chase.isAlive() && mc.player.distanceTo(chase) <= walkRange.get()) {
+            return Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class).walkPoint(chase);
+        }
         if (!autoWalk.get() || chase == null || !chase.isAlive()) return null;
         double d = mc.player.distanceTo(chase);
-        if (d <= walkStop.get() || d > walkRange.get()) return null;
+        if (d > walkRange.get()) return null;
+        if (walkMode.is("Behind")) return Prism.modules().get(dev.prismglass.module.movement.AutoWalk.class).behindPoint(chase);
+        if (d <= walkStop.get()) return null;
         return chase.position();
+    }
+
+    /** The entity AutoWalk is walking to (may be out of attack range), or null. */
+    public LivingEntity chaseTarget() { return chase; }
+
+    @Override public Vec3 walkPoint() { return chasePoint(); }
+    @Override public boolean walkSprint() { return walkSprint.get(); }
+    @Override public boolean walkJump() { return walkJump.get(); }
+    @Override public double walkStop() { return ai() || walkMode.is("Behind") ? 0.3 : 0; }
+    @Override public boolean walkAvoidHazards() {
+        var aw = Prism.modules().get(dev.prismglass.module.movement.AutoWalk.class);
+        return !walkMode.is("Behind") || aw.avoidHazards.get();
+    }
+    @Override public void walkBlocked() {
+        if (walkMode.is("Behind")) Prism.modules().get(dev.prismglass.module.movement.AutoWalk.class).walkBlocked();
     }
 
     @Override
     public void onTick() {
         target = null;
         chase = null;
-        if (autoWalk.get()) {
+        if (autoWalk.get() || ai()) {
             EntityUtil.TargetFilter wf = new EntityUtil.TargetFilter(players.get(), hostiles.get(), animals.get(), invisibles.get(), naked.get());
             List<LivingEntity> far = EntityUtil.targets(walkRange.get(), wf, sort.get());
             if (!far.isEmpty()) chase = far.get(0);
@@ -87,7 +119,9 @@ public class KillAura extends Module {
         if (list.isEmpty()) return;
         target = list.get(0);
         Hud.setTarget(target);
-        if (kbDisplace.get()) faceDisplaced(target); else CombatUtil.face(target, 100);
+        if (kbDisplace.get()) faceDisplaced(target);
+        else if (ai()) Prism.rotations().request(Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class).aimPoint(target), 100);
+        else CombatUtil.face(target, 100);
 
         double reach = attackRange();
         double dist = RotationUtil.distanceTo(target);
@@ -157,5 +191,10 @@ public class KillAura extends Module {
         return Prism.anticheat().range(want);
     }
 
-    @Override public String getInfo() { return target == null ? null : target.getName().getString(); }
+    @Override
+    public String getInfo() {
+        if (target == null) return null;
+        if (ai()) return target.getName().getString() + " " + Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class).tacticFor(target).label;
+        return target.getName().getString();
+    }
 }
