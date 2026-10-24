@@ -1,31 +1,47 @@
 package dev.prismglass.util;
 
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.CompareOp;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import dev.prismglass.streamproof.Overlay;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.function.Supplier;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.rendertype.RenderSetup;
-import dev.prismglass.streamproof.Overlay;
-import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
+import org.jspecify.annotations.Nullable;
 
 /**
- * World-space rendering for 26.1. Modules push shapes during onRender3D; they go into four render types
- * (filled/lines x see-through/depth-tested) of the frame's buffer source and are flushed at the end, so
- * hundreds of ESP boxes cost a handful of draws.
+ * World-space rendering for 26.1+. Modules push shapes during onRender3D; they go into four draws
+ * (filled/lines x see-through/depth-tested) that are drawn in one render pass at the end, so hundreds of ESP boxes
+ * cost a handful of draws.
  *
- * <p>Coordinates are absolute world coordinates; the camera offset is applied here (26.1 level rendering is
+ * <p>Coordinates are absolute world coordinates; the camera offset is applied here (level rendering is
  * camera-relative, with the view rotation in the model-view transform).
+ *
+ * <p>26.3 (renderpearl): render types lost their output target and there is no immediate buffer source any more, so
+ * Render3D stages its own vertices ({@link Batch}) and draws them itself, into the StreamProof overlay or the main
+ * target. Depth is reversed now (cleared to 0, GREATER_THAN_OR_EQUAL passes).
  */
 public final class Render3D {
     private static final Minecraft mc = Minecraft.getInstance();
@@ -33,66 +49,61 @@ public final class Render3D {
     private static RenderPipeline pipeline(String name, RenderPipeline.Snippet snippet, boolean xray) {
         return RenderPipeline.builder(snippet)
             .withLocation(Identifier.fromNamespaceAndPath("prismglass", "pipeline/" + name))
+            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
             .withCull(false)
-            .withDepthStencilState(new DepthStencilState(xray ? CompareOp.ALWAYS_PASS : CompareOp.LESS_THAN_OR_EQUAL, false))
+            .withDepthStencilState(new DepthStencilState(xray ? CompareOp.ALWAYS_PASS : CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build();
     }
 
-    private static final RenderType FILL_XRAY = RenderType.create("prism_fill_xray",
-        RenderSetup.builder(pipeline("esp_fill_xray", RenderPipelines.DEBUG_FILLED_SNIPPET, true)).setOutputTarget(Overlay.OUTPUT).createRenderSetup());
-    private static final RenderType FILL_DEPTH = RenderType.create("prism_fill_depth",
-        RenderSetup.builder(pipeline("esp_fill_depth", RenderPipelines.DEBUG_FILLED_SNIPPET, false)).setOutputTarget(Overlay.OUTPUT).createRenderSetup());
-    private static final RenderType LINES_XRAY = RenderType.create("prism_lines_xray",
-        RenderSetup.builder(pipeline("esp_lines_xray", RenderPipelines.LINES_SNIPPET, true)).setOutputTarget(Overlay.OUTPUT).createRenderSetup());
-    private static final RenderType LINES_DEPTH = RenderType.create("prism_lines_depth",
-        RenderSetup.builder(pipeline("esp_lines_depth", RenderPipelines.LINES_SNIPPET, false)).setOutputTarget(Overlay.OUTPUT).createRenderSetup());
+    private static final RenderPipeline FILL_XRAY = pipeline("esp_fill_xray", RenderPipelines.DEBUG_FILLED_SNIPPET, true);
+    private static final RenderPipeline FILL_DEPTH = pipeline("esp_fill_depth", RenderPipelines.DEBUG_FILLED_SNIPPET, false);
+    private static final RenderPipeline LINES_XRAY = pipeline("esp_lines_xray", RenderPipelines.LINES_SNIPPET, true);
+    private static final RenderPipeline LINES_DEPTH = pipeline("esp_lines_depth", RenderPipelines.LINES_SNIPPET, false);
 
-    /**
-     * Own buffer source with a fixed buffer per type: the level's source shares one buffer between non-fixed types
-     * and flushes the previous type whenever another is requested, which killed the cached consumers mid-frame
-     * ("Not building!" as soon as fills and outlines alternate). Depth-tested types first, x-ray on top.
-     */
-    private static final MultiBufferSource.BufferSource OWN = MultiBufferSource.immediateWithBuffers(
-        new java.util.LinkedHashMap<>(java.util.Map.of()) {{
-            put(FILL_DEPTH, new com.mojang.blaze3d.vertex.ByteBufferBuilder(1 << 16));
-            put(LINES_DEPTH, new com.mojang.blaze3d.vertex.ByteBufferBuilder(1 << 16));
-            put(FILL_XRAY, new com.mojang.blaze3d.vertex.ByteBufferBuilder(1 << 16));
-            put(LINES_XRAY, new com.mojang.blaze3d.vertex.ByteBufferBuilder(1 << 16));
-        }}, new com.mojang.blaze3d.vertex.ByteBufferBuilder(1 << 12));
+    /** Depth-tested draws first, x-ray on top (the order the 26.1 buffer source flushed them in). */
+    private static final Batch OWN = new Batch("Prism Render3D", 1 << 18, FILL_DEPTH, LINES_DEPTH, FILL_XRAY, LINES_XRAY);
 
-    private static MultiBufferSource.BufferSource source;
+    private static boolean building;
     private static PoseStack.Pose pose;
     private static Vec3 cam = Vec3.ZERO;
-    private static VertexConsumer fillX, fillD, lineX, lineD;
     private static final Matrix4f VIEW = new Matrix4f(), PROJ = new Matrix4f();
     private static float lineWidth = 1.5f;
 
     private Render3D() {}
 
+    /**
+     * Where Prism's visuals go: the StreamProof overlay target while it runs, otherwise the main target. The one
+     * place that reads Overlay's output target (Render3D, Holo and the GUI split all go through here).
+     */
+    public static RenderTarget overlayTarget() {
+        return Overlay.OUTPUT.getRenderTarget();
+    }
+
     public static void begin(LevelRenderContext ctx) {
-        source = OWN;
         pose = ctx.poseStack().last();
         var camera = ctx.levelState().cameraRenderState;
         cam = camera.pos;
         VIEW.set(camera.viewRotationMatrix);
         PROJ.set(camera.projectionMatrix);
-        fillX = fillD = lineX = lineD = null;
+        OWN.begin();
+        building = true;
         Overlay.beginWorld(); // StreamProof: boxes go to the hidden layer, which needs the world's depth
     }
 
     public static void end() {
-        if (source == null) return;
-        source.endBatch();
+        if (!building) return;
+        building = false;
+        OWN.draw(() -> "Prism Render3D", overlayTarget(), true, null, null, null);
     }
 
+    // Builders are fetched per shape: the staged buffer has one open builder at a time, and asking for another draw
+    // finishes the previous one (a cached consumer would be dead by then).
     private static VertexConsumer fill(boolean xray) {
-        if (xray) return fillX != null ? fillX : (fillX = source.getBuffer(FILL_XRAY));
-        return fillD != null ? fillD : (fillD = source.getBuffer(FILL_DEPTH));
+        return OWN.get(xray ? FILL_XRAY : FILL_DEPTH);
     }
 
     private static VertexConsumer lines(boolean xray) {
-        if (xray) return lineX != null ? lineX : (lineX = source.getBuffer(LINES_XRAY));
-        return lineD != null ? lineD : (lineD = source.getBuffer(LINES_DEPTH));
+        return OWN.get(xray ? LINES_XRAY : LINES_DEPTH);
     }
 
     private static void v(VertexConsumer b, double x, double y, double z, int color) {
@@ -102,14 +113,14 @@ public final class Render3D {
     // ---- shapes -----------------------------------------------------------------------------------------
 
     public static void box(AABB box, int fill, int outline, boolean throughWalls) {
-        if (source == null) return;
+        if (!building) return;
         if (ColorUtil.alpha(fill) > 0) filled(fill(throughWalls), box, fill);
         if (ColorUtil.alpha(outline) > 0) outline(lines(throughWalls), box, outline);
     }
 
     /** One flat quad (4 corners in order) filled with a single colour. */
     public static void quad(Vec3 a, Vec3 b, Vec3 c, Vec3 d, int color, boolean throughWalls) {
-        if (source == null) return;
+        if (!building) return;
         VertexConsumer vc = fill(throughWalls);
         v(vc, a.x, a.y, a.z, color);
         v(vc, b.x, b.y, b.z, color);
@@ -118,7 +129,7 @@ public final class Render3D {
     }
 
     public static void plate(AABB box, int color, double height, boolean throughWalls) {
-        if (source == null) return;
+        if (!building) return;
         VertexConsumer b = fill(throughWalls);
         int top = ColorUtil.withAlpha(color, 0);
         double y0 = box.minY, y1 = box.minY + height;
@@ -143,13 +154,13 @@ public final class Render3D {
     }
 
     public static void line(Vec3 a, Vec3 b, int color) {
-        if (source == null) return;
+        if (!building) return;
         line(lines(true), a.x, a.y, a.z, b.x, b.y, b.z, color);
     }
 
     /** Line from just in front of the camera (so it starts at the crosshair) to a point. */
     public static void tracer(Vec3 to, int color) {
-        if (source == null) return;
+        if (!building) return;
         var camera = mc.gameRenderer.mainCamera();
         Vec3 look = Vec3.directionFromRotation(camera.xRot(), camera.yRot());
         Vec3 from = cam.add(look.scale(0.5));
@@ -207,5 +218,87 @@ public final class Render3D {
     public static AABB lerpBox(Entity e, float delta) {
         Vec3 p = e.getPosition(delta);
         return e.getBoundingBox().move(p.x - e.getX(), p.y - e.getY(), p.z - e.getZ());
+    }
+
+    // ---- staged drawing -------------------------------------------------------------------------------
+
+    /**
+     * A per-frame set of draws, one per pipeline in a fixed order, staged in a StagedVertexBuffer (pooled GPU
+     * buffers) and drawn in a single render pass with the current projection, fog and model-view (vanilla's way of
+     * drawing its own geometry in 26.3, cf. GuiRenderer). Ask {@link #get} for the builder every time.
+     */
+    public static final class Batch {
+        private final StagedVertexBuffer buffer;
+        private final RenderPipeline[] pipelines;
+        private final List<StagedVertexBuffer.Draw> draws = new ArrayList<>();
+        private boolean open;
+
+        public Batch(String label, int capacity, RenderPipeline... pipelines) {
+            this.buffer = new StagedVertexBuffer(() -> label, capacity);
+            this.pipelines = pipelines;
+        }
+
+        /** Start a frame's worth of geometry (anything left over from a frame that died is dropped). */
+        public void begin() {
+            if (open) discard();
+            for (RenderPipeline p : pipelines) draws.add(buffer.appendDraw(p.getVertexFormatBinding(0), p.getPrimitiveTopology()));
+            open = true;
+        }
+
+        public VertexConsumer get(RenderPipeline pipeline) {
+            for (int i = 0; i < pipelines.length; i++) if (pipelines[i] == pipeline) return buffer.getVertexBuilder(draws.get(i));
+            throw new IllegalArgumentException("pipeline not in this batch: " + pipeline);
+        }
+
+        public boolean isOpen() { return open; }
+
+        private void discard() {
+            try {
+                buffer.upload(); // frees the staged vertex slices
+            } finally {
+                buffer.endFrame();
+                draws.clear();
+                open = false;
+            }
+        }
+
+        /**
+         * Upload and draw everything into {@code target} (with its depth when {@code depth}), then reset. An optional
+         * texture is bound as {@code samplerName} for every draw.
+         */
+        public void draw(Supplier<String> label, RenderTarget target, boolean depth, @Nullable String samplerName,
+                         @Nullable GpuTextureView texture, @Nullable GpuSampler sampler) {
+            if (!open) return;
+            try {
+                boolean any = false;
+                for (StagedVertexBuffer.Draw d : draws) {
+                    buffer.requestIndexCount(d);
+                    any |= !d.isEmpty();
+                }
+                buffer.upload();
+                if (!any || target.getColorTextureView() == null) return;
+                RenderSystem.resizeAllAutoStorageIndexBuffers();
+                GpuBufferSlice transforms = RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrixCopy());
+                GpuTextureView depthView = depth && target.hasDepth() ? target.getDepthTextureView() : null;
+                try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
+                        .createRenderPass(label, target.getColorTextureView(), Optional.empty(), depthView, OptionalDouble.empty())) {
+                    RenderSystem.bindDefaultUniforms(pass);
+                    pass.setUniform("DynamicTransforms", transforms);
+                    if (samplerName != null && texture != null) pass.setUniform(samplerName, texture, sampler);
+                    for (int i = 0; i < pipelines.length; i++) {
+                        StagedVertexBuffer.ExecuteInfo info = buffer.getExecuteInfo(draws.get(i));
+                        if (info == null) continue;
+                        pass.setPipeline(RenderSystem.getCompiledPipeline(pipelines[i]));
+                        pass.setVertexBuffer(0, info.vertexBuffer().slice());
+                        pass.setIndexBuffer(info.indexBuffer(), info.indexType());
+                        pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+                    }
+                }
+            } finally {
+                buffer.endFrame();
+                draws.clear();
+                open = false;
+            }
+        }
     }
 }

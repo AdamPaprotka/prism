@@ -171,6 +171,7 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+        HudLayer.under(ctx); // the HUD sits right under the ClickGUI (and under its blur)
         // no world (main menu): vanilla panorama background
         if (minecraft.level == null) { super.extractBackground(ctx, mouseX, mouseY, delta); return; }
         boolean holo = dev.prismglass.gui.render.Holo.capturing();

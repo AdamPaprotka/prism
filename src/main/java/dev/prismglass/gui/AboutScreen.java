@@ -35,6 +35,12 @@ public class AboutScreen extends Screen {
 
     @Override public boolean isPauseScreen() { return false; }
 
+    @Override
+    public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+        HudLayer.under(ctx); // the HUD sits right under this screen
+        super.extractBackground(ctx, mouseX, mouseY, delta);
+    }
+
     private static String modVersion(String id) {
         return FabricLoader.getInstance().getModContainer(id).map(m -> m.getMetadata().getVersion().getFriendlyString()).orElse("?");
     }

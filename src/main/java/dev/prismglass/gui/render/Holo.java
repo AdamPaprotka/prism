@@ -1,36 +1,33 @@
 package dev.prismglass.gui.render;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import dev.prismglass.Prism;
 import dev.prismglass.gui.ClickGuiScreen;
 import dev.prismglass.module.client.ClickGui;
+import dev.prismglass.util.Render3D;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.rendertype.RenderSetup;
-import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Hologram pop-out (26.1): the ClickGUI is captured to a texture and drawn on a perspective quad floating in the
+ * Hologram pop-out (26.1+): the ClickGUI is captured to a texture and drawn on a perspective quad floating in the
  * live world, so the menu literally leans out in front of you.
  *
  * <ul>
@@ -49,30 +46,20 @@ public final class Holo {
     private static final Minecraft mc = Minecraft.getInstance();
     public static final Identifier TEX_ID = Identifier.fromNamespaceAndPath("prismglass", "holo");
 
-    private static final VertexFormat HOLO_FORMAT = VertexFormat.builder()
-        .add("Position", VertexFormatElement.POSITION)
-        .add("UV0", VertexFormatElement.UV0)
-        .build();
-
-    public static final RenderPipeline HOLO = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET)
+    /** Textured quads (GUI textured snippet: projection, transforms, Sampler0) with our shader, no depth test or write. */
+    public static final RenderPipeline HOLO = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
         .withLocation(Identifier.fromNamespaceAndPath("prismglass", "pipeline/holo_quad"))
         .withVertexShader(Identifier.fromNamespaceAndPath("prismglass", "core/holo"))
         .withFragmentShader(Identifier.fromNamespaceAndPath("prismglass", "core/holo"))
-        .withSampler("Sampler0")
         .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
         .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
         .withCull(false)
-        .withVertexFormat(HOLO_FORMAT, VertexFormat.Mode.QUADS)
+        .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
         .build();
 
-    private static final RenderType HOLO_TYPE = RenderType.create("prism_holo",
-        RenderSetup.builder(HOLO)
-            .withTexture("Sampler0", TEX_ID, () -> RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR))
-            .setOutputTarget(dev.prismglass.streamproof.Overlay.OUTPUT) // StreamProof on: hidden layer, else main
-            .createRenderSetup());
-
-    private static final MultiBufferSource.BufferSource SRC =
-        MultiBufferSource.immediate(new ByteBufferBuilder(2048));
+    /** 26.3: no buffer sources/output targets any more, the panel is staged and drawn by hand (see Render3D.Batch). */
+    private static final Render3D.Batch BATCH = new Render3D.Batch("Prism holo", 2048, HOLO);
+    private static int holoState; // 0 = not tried, 1 = compiled, -1 = failed
 
     /** Offscreen target the ClickGUI is captured into; exposed to the render system as TEX_ID. */
     public static TextureTarget target;
@@ -120,7 +107,7 @@ public final class Holo {
     private static void ensureTarget() {
         var main = mc.gameRenderer.mainRenderTarget();
         if (target == null) {
-            target = new TextureTarget("prism holo", main.width, main.height, true);
+            target = new TextureTarget("prism holo", main.width, main.height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
             view = RenderSystem.getDevice().createTextureView(target.getColorTexture());
         } else if (target.width != main.width || target.height != main.height) {
             if (view != null) view.close();
@@ -341,11 +328,22 @@ public final class Holo {
         ClickGui t = theme();
         double curve = t == null ? 0.1 : t.holoCurve.getFloat();
 
+        if (holoState == 0) {
+            // compiled on first use; a broken shader must not take the world pass down with it
+            try {
+                holoState = RenderSystem.getCompiledPipelineNullable(HOLO) != null ? 1 : -1;
+            } catch (Throwable e) {
+                holoState = -1;
+                Prism.LOG.error("[holo] panel shader failed", e);
+            }
+        }
+        if (holoState < 0) return;
+
         PoseStack.Pose pose = ctx.poseStack().last();
         Vec3 cam = ctx.levelState().cameraRenderState.pos;
         Vec3 upHalf = aUp.scale(aH / 2);
         int N = 16;
-        VertexConsumer vc = SRC.getBuffer(HOLO_TYPE);
+        BATCH.begin();
         // columns across aRight, each nudged toward the viewer by a parabola so the panel wraps a little
         Vec3 pTop = null, pBot = null;
         float pu = 0;
@@ -356,7 +354,8 @@ public final class Holo {
             Vec3 top = c.add(upHalf), bot = c.subtract(upHalf);
             float uu = (float) i / N;
             if (i > 0) {
-                // V flipped: the capture target is a GL framebuffer (origin bottom-left) vs the GUI's top-left
+                VertexConsumer vc = BATCH.get(HOLO);
+                // V flipped: the capture target's rows start at the bottom (GL convention) vs the GUI's top-left
                 vert(vc, pose, cam, pTop, pu, 1f);
                 vert(vc, pose, cam, top, uu, 1f);
                 vert(vc, pose, cam, bot, uu, 0f);
@@ -366,7 +365,9 @@ public final class Holo {
             pBot = bot;
             pu = uu;
         }
-        SRC.endBatch();
+        // StreamProof on: hidden layer (with the world's camera, so it lines up), else the main target
+        BATCH.draw(() -> "Prism holo panel", Render3D.overlayTarget(), true, "Sampler0", view,
+            RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
     }
 
     private static void vert(VertexConsumer vc, PoseStack.Pose pose, Vec3 cam, Vec3 p, float u, float v) {
