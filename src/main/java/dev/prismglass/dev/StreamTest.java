@@ -13,7 +13,9 @@ import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import org.lwjgl.glfw.GLFW;
+import dev.prismglass.streamproof.PrismWindow;
+import dev.prismglass.util.KeyUtil;
+import org.lwjgl.sdl.SDLVideo;
 
 /**
  * Dev-only StreamProof test (./gradlew runClient -Pstreamtest). Flat world, a zombie with ESP box + tracer, StreamProof
@@ -60,8 +62,8 @@ public final class StreamTest {
             if (!Boolean.getBoolean("prismglass.streamtest.nosp")) Prism.modules().get(StreamProof.class).setEnabled(true);
             Overlay.debugForceVisible = true;
             // keep Minecraft above other windows during the test so the captures show it (the owned overlay stays above it)
-            GLFW.glfwSetWindowAttrib(main, GLFW.GLFW_FLOATING, GLFW.GLFW_TRUE);
-            GLFW.glfwFocusWindow(main);
+            SDLVideo.SDL_SetWindowAlwaysOnTop(main, true);
+            SDLVideo.SDL_RaiseWindow(main);
         }
         if (t == 100) {
             log("overlay active=" + Overlay.active() + " shown=" + Overlay.isShown() + " affinity=0x" + Integer.toHexString(Overlay.affinity()));
@@ -79,52 +81,54 @@ public final class StreamTest {
             dev.prismglass.util.ChatUtil.good("StreamProof test message (should be a hidden toast)");
         }
         if (t == 470) {
-            log("clickgui cursor mode=0x" + Integer.toHexString(GLFW.glfwGetInputMode(main, GLFW.GLFW_CURSOR)) + " (hidden=0x34002)");
+            log("clickgui cursor hidden=" + KeyUtil.cursorHidden() + " locked=" + KeyUtil.cursorLocked(mc.getWindow()) + " (want hidden=true locked=false)");
             Overlay.debugReadbackFile = mc.gameDirectory.toPath().resolve("streamproof-clickgui.png").toString();
         }
         if (t == 480) capture(4);
         if (t == 520) mc.gui.setScreen(null);
-        if (t == 530) log("after close cursor mode=0x" + Integer.toHexString(GLFW.glfwGetInputMode(main, GLFW.GLFW_CURSOR)) + " (disabled=0x34003)");
+        if (t == 530) log("after close cursor locked=" + KeyUtil.cursorLocked(mc.getWindow()) + " (want locked=true)");
         if (t == 700) {
             Overlay.setExcluded(true);
             // like real play: not forced on top, overlay visibility from focus as normal
-            GLFW.glfwSetWindowAttrib(main, GLFW.GLFW_FLOATING, GLFW.GLFW_FALSE);
+            SDLVideo.SDL_SetWindowAlwaysOnTop(main, false);
             Overlay.debugForceVisible = false;
-            GLFW.glfwFocusWindow(main);
-            mc.getWindow().toggleFullScreen();
+            SDLVideo.SDL_RaiseWindow(main);
+            toggleFullscreen();
         }
         if (t == 760) {
-            long monitor = GLFW.glfwGetWindowMonitor(main);
-            int[] w = new int[1], h = new int[1];
-            GLFW.glfwGetWindowSize(main, w, h);
-            log("fullscreen=" + mc.getWindow().isFullscreen() + " exclusiveMonitor=" + monitor + " decorated=" + GLFW.glfwGetWindowAttrib(main, GLFW.GLFW_DECORATED)
-                + " size=" + w[0] + "x" + h[0] + " overlayShown=" + Overlay.isShown() + " affinity=0x" + Integer.toHexString(Overlay.affinity()));
+            int[] r = Overlay.rect(main);
+            log("fullscreen=" + fullscreen() + " exclusive=" + mc.getWindow().isExclusiveFullscreen() + " decorated=" + decorated(main)
+                + " size=" + r[2] + "x" + r[3] + " overlayShown=" + Overlay.isShown() + " affinity=0x" + Integer.toHexString(Overlay.affinity()));
             Overlay.debugRaise();
             Overlay.debugReadbackFile = mc.gameDirectory.toPath().resolve("streamproof-overlay-fs.png").toString();
         }
         if (t == 780) capture(3);
         if (t == 900) {
-            GLFW.glfwFocusWindow(main);
-            log("fullscreen exclusion off: " + Overlay.setExcluded(false) + " focused=" + GLFW.glfwGetWindowAttrib(main, GLFW.GLFW_FOCUSED)
+            SDLVideo.SDL_RaiseWindow(main);
+            log("fullscreen exclusion off: " + Overlay.setExcluded(false) + " focused=" + ((SDLVideo.SDL_GetWindowFlags(main) & SDLVideo.SDL_WINDOW_INPUT_FOCUS) != 0)
                 + " overlayShown=" + Overlay.isShown());
         }
         if (t == 920) capture(5);
-        if (t == 1060) mc.getWindow().toggleFullScreen();
+        if (t == 1060) toggleFullscreen();
         if (t == 1100) {
-            log("back to windowed: fullscreen=" + mc.getWindow().isFullscreen() + " decorated=" + GLFW.glfwGetWindowAttrib(main, GLFW.GLFW_DECORATED));
-            GLFW.glfwSetWindowAttrib(main, GLFW.GLFW_FLOATING, GLFW.GLFW_FALSE);
+            log("back to windowed: fullscreen=" + fullscreen() + " decorated=" + decorated(main));
+            SDLVideo.SDL_SetWindowAlwaysOnTop(main, false);
             log("done");
             Runtime.getRuntime().halt(0);
         }
     }
 
     private static void capture(int n) {
-        long main = mc.getWindow().handle();
-        int[] x = new int[1], y = new int[1], w = new int[1], h = new int[1];
-        GLFW.glfwGetWindowPos(main, x, y);
-        GLFW.glfwGetWindowSize(main, w, h);
-        log("CAPTURE " + n + " " + x[0] + " " + y[0] + " " + w[0] + " " + h[0]);
+        int[] r = Overlay.rect(mc.getWindow().handle());
+        log("CAPTURE " + n + " " + r[0] + " " + r[1] + " " + r[2] + " " + r[3]);
     }
+
+    /** F11: 26.3's Window has no toggle; the option applies it on the render thread (updateFullscreenIfChanged). */
+    private static void toggleFullscreen() { mc.options.fullscreen().set(!mc.options.fullscreen().get()); }
+
+    private static boolean fullscreen() { return ((PrismWindow) (Object) mc.getWindow()).prism$fullscreen(); }
+
+    private static boolean decorated(long window) { return (SDLVideo.SDL_GetWindowFlags(window) & SDLVideo.SDL_WINDOW_BORDERLESS) == 0; }
 
     private static void run(MinecraftServer server, String cmd) {
         server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), cmd));
