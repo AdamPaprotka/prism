@@ -1,103 +1,97 @@
 package dev.prismglass.mixin;
 
-import com.mojang.blaze3d.platform.Monitor;
-import com.mojang.blaze3d.platform.ScreenManager;
-import com.mojang.blaze3d.platform.VideoMode;
 import com.mojang.blaze3d.platform.Window;
 import dev.prismglass.streamproof.Overlay;
-import java.util.Optional;
-import org.lwjgl.glfw.GLFW;
+import dev.prismglass.streamproof.PrismWindow;
+import java.nio.IntBuffer;
+import net.minecraft.util.Util;
+import org.lwjgl.sdl.SDLVideo;
+import org.lwjgl.sdl.SDL_Event;
+import org.lwjgl.system.MemoryStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * StreamProof needs the overlay window on top of Minecraft, which exclusive fullscreen doesn't allow. While it's on,
- * "fullscreen" is a borderless window covering the monitor (looks the same, same resolution).
+ * "fullscreen" is always the borderless window covering the monitor (looks the same, same resolution).
  *
- * <p>Only a HEAD inject (no @Redirect): some MixinExtras builds shipped with Fabric Loader crash on redirects here.
+ * <p>26.3 (SDL3): vanilla already does borderless fullscreen on Windows unless "Exclusive Fullscreen" is on, as a
+ * plain window one pixel wider than the monitor (the extra column is off-screen; an undecorated GL window that exactly
+ * covers the monitor gets silently promoted to exclusive fullscreen by NVIDIA drivers, hiding the overlay). So this
+ * only forces that path, fixes F11 from a maximized window and keeps the overlay's own window events away from
+ * Minecraft's Window.
  */
 @Mixin(Window.class)
-public abstract class WindowMixin {
+public abstract class WindowMixin implements PrismWindow {
     @Shadow @Final private long handle;
-    @Shadow @Final private ScreenManager screenManager;
-    @Shadow private Optional<VideoMode> preferredFullscreenVideoMode;
+    @Shadow private boolean fullscreenRequested;
     @Shadow private boolean fullscreen;
-    @Shadow private int windowedX;
-    @Shadow private int windowedY;
-    @Shadow private int windowedWidth;
-    @Shadow private int windowedHeight;
+    @Shadow private boolean borderlessFullscreen;
     @Shadow private int x;
     @Shadow private int y;
     @Shadow private int width;
     @Shadow private int height;
-    @Shadow private boolean isResized;
 
-    @Shadow private static int allowedWindowMinSize(int size) { throw new AssertionError(); }
+    @Override
+    public boolean prism$fullscreen() { return fullscreen; }
 
-    @Inject(method = "setMode", at = @At("HEAD"), cancellable = true)
-    private void prism$setMode(CallbackInfo ci) {
-        boolean borderlessNow = Overlay.borderless;
-        if (fullscreen && Overlay.wantsBorderless()) {
-            Monitor monitor = screenManager.findBestMonitor((Window) (Object) this);
-            if (monitor == null) return; // vanilla handles "no monitor"
-            VideoMode mode = monitor.getPreferredVidMode(preferredFullscreenVideoMode);
-            // a maximized window stays clamped to the work area (gaps top/bottom), so un-maximize first;
-            // the restore updates x/y/width/height through the move/size callbacks before they're saved below
-            if (!borderlessNow && GLFW.glfwGetWindowAttrib(handle, GLFW.GLFW_MAXIMIZED) == GLFW.GLFW_TRUE) {
-                Overlay.remaximize = true;
-                GLFW.glfwRestoreWindow(handle);
-            }
-            if (!borderlessNow && GLFW.glfwGetWindowMonitor(handle) == 0L) {
-                windowedX = x;
-                windowedY = y;
-                windowedWidth = allowedWindowMinSize(width);
-                windowedHeight = allowedWindowMinSize(height);
-            }
-            // locals: the restore/style changes fire Minecraft's move/size callbacks, which overwrite x/y/width/height
-            int bx = monitor.getX(), by = monitor.getY();
-            int bw = allowedWindowMinSize(mode.getWidth());
-            // one pixel taller than the monitor (the extra row is off-screen): an undecorated GL window that exactly
-            // covers the monitor gets silently promoted to exclusive fullscreen by NVIDIA drivers, hiding the overlay
-            int bh = allowedWindowMinSize(mode.getHeight()) + (Boolean.getBoolean("prismglass.exactfs") ? 0 : 1);
-            GLFW.glfwSetWindowAttrib(handle, GLFW.GLFW_DECORATED, GLFW.GLFW_FALSE);
-            GLFW.glfwSetWindowMonitor(handle, 0L, bx, by, bw, bh, GLFW.GLFW_DONT_CARE);
-            x = bx;
-            y = by;
-            width = bw;
-            height = bh;
-            isResized = true;
-            Overlay.borderlessRect = new int[]{bx, by, bw, bh};
-            Overlay.borderless = true;
-            ci.cancel();
-            return;
-        }
-        if (!borderlessNow) return; // plain vanilla
-        GLFW.glfwSetWindowAttrib(handle, GLFW.GLFW_DECORATED, GLFW.GLFW_TRUE);
-        Overlay.borderless = false;
-        if (!fullscreen) return; // vanilla restores the saved windowed size/position
-        // borderless -> exclusive fullscreen: vanilla would think we were windowed and overwrite the saved size
-        Monitor monitor = screenManager.findBestMonitor((Window) (Object) this);
-        if (monitor == null) return;
-        VideoMode mode = monitor.getPreferredVidMode(preferredFullscreenVideoMode);
-        x = 0;
-        y = 0;
-        width = allowedWindowMinSize(mode.getWidth());
-        height = allowedWindowMinSize(mode.getHeight());
-        isResized = true;
-        GLFW.glfwSetWindowMonitor(handle, monitor.getMonitor(), x, y, width, height, mode.getRefreshRate());
-        ci.cancel();
+    @Override
+    public boolean prism$borderless() { return borderlessFullscreen; }
+
+    /** StreamProof: never SDL exclusive fullscreen, even with vanilla's Exclusive Fullscreen option on. */
+    @Inject(method = "useBorderlessFullscreenWindow", at = @At("HEAD"), cancellable = true)
+    private void prism$forceBorderless(CallbackInfoReturnable<Boolean> cir) {
+        if (Util.getPlatform() == Util.OS.WINDOWS && Overlay.wantsBorderless()) cir.setReturnValue(true);
     }
 
-    /** Back to windowed after borderless: maximize again if it was maximized before. */
-    @Inject(method = "setMode", at = @At("TAIL"))
-    private void prism$remaximize(CallbackInfo ci) {
-        if (!fullscreen && Overlay.remaximize) {
-            Overlay.remaximize = false;
-            GLFW.glfwMaximizeWindow(handle);
+    /**
+     * F11 from a maximized window: vanilla saves the maximized rect as the windowed size and only un-maximizes inside
+     * applyBorderlessFullscreenWindow, so leaving fullscreen gives a work-area-sized window that isn't maximized.
+     * Un-maximize first and save the real windowed rect; maximize again when leaving (TAIL).
+     */
+    @Inject(method = "setMode", at = @At("HEAD"))
+    private void prism$unmaximize(CallbackInfo ci) {
+        if (!fullscreenRequested || fullscreen || !Overlay.wantsBorderless()) return;
+        if ((SDLVideo.SDL_GetWindowFlags(handle) & SDLVideo.SDL_WINDOW_MAXIMIZED) == 0) return;
+        Overlay.remaximize = true;
+        SDLVideo.SDL_RestoreWindow(handle);
+        SDLVideo.SDL_SyncWindow(handle);
+        // the restore's move/resize events are only handled with the next event poll, but vanilla saves
+        // x/y/width/height as the windowed rect right after this: read the restored rect from SDL now
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer a = stack.mallocInt(1), b = stack.mallocInt(1);
+            if (SDLVideo.SDL_GetWindowPosition(handle, a, b)) { x = a.get(0); y = b.get(0); }
+            if (SDLVideo.SDL_GetWindowSize(handle, a, b)) { width = a.get(0); height = b.get(0); }
         }
+    }
+
+    @Inject(method = "setMode", at = @At("TAIL"))
+    private void prism$afterSetMode(CallbackInfo ci) {
+        Overlay.borderless = borderlessFullscreen;
+        // setWindowSizeAndPosition stored where borderless fullscreen must be; Overlay keeps it there
+        Overlay.borderlessRect = borderlessFullscreen ? new int[]{x, y, width, height} : null;
+        if (!fullscreenRequested && !fullscreen && Overlay.remaximize) {
+            Overlay.remaximize = false;
+            SDLVideo.SDL_MaximizeWindow(handle);
+        }
+    }
+
+    /** Dev (-Pexactfs): borderless window exactly the monitor's size, to check whether the driver promotes it. */
+    @ModifyArg(method = "applyBorderlessFullscreenWindow",
+        at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/Window;setWindowSizeAndPosition(IIII)Z"), index = 2)
+    private int prism$exactBorderless(int w) {
+        return Boolean.getBoolean("prismglass.exactfs") ? w - 1 : w;
+    }
+
+    /** The StreamProof overlay is an SDL window too: its move/resize/show events aren't Minecraft's window's. */
+    @Inject(method = "handleEvent", at = @At("HEAD"), cancellable = true)
+    private void prism$skipOverlayEvents(SDL_Event event, CallbackInfo ci) {
+        if (Overlay.isOverlayEvent(event)) ci.cancel();
     }
 }
