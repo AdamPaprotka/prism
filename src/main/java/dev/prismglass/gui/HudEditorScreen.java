@@ -43,6 +43,7 @@ public class HudEditorScreen extends Screen {
 
     @Override
     public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+        HudLayer.under(ctx); // the HUD being edited sits right under the editor's outlines
         ctx.fill(0, 0, width, height, 0x40080A12);
     }
 

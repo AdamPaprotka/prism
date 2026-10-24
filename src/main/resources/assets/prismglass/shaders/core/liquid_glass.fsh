@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Liquid glass: the panel is a thick convex lens over a snapshot of the world behind it.
 //  - refraction: background is pulled inward near the rim, so edges magnify and bend the scene
@@ -9,13 +10,13 @@
 
 uniform sampler2D Sampler0;
 
-in vec4 tintOpacity;
-in vec2 localPx;
-flat in vec2 sizePx;
-flat in vec4 params;
-flat in vec3 params2;
+layout(location = 0) in vec4 tintOpacity;
+layout(location = 1) in vec2 localPx;
+layout(location = 2) flat in vec2 sizePx;
+layout(location = 3) flat in vec4 params;
+layout(location = 4) flat in vec3 params2;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 float sdRoundRect(vec2 p, vec2 halfSize, float r) {
     vec2 q = abs(p) - halfSize + r;

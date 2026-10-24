@@ -56,6 +56,12 @@ public class ChangelogScreen extends Screen {
     @Override public boolean isPauseScreen() { return false; }
 
     @Override
+    public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+        HudLayer.under(ctx); // the HUD sits right under this screen
+        super.extractBackground(ctx, mouseX, mouseY, delta);
+    }
+
+    @Override
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         ClickGui theme = Prism.modules().get(ClickGui.class);
         int accent = theme.accent.color();

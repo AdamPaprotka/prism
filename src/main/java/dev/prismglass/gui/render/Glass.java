@@ -1,17 +1,16 @@
 package dev.prismglass.gui.render;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import dev.prismglass.util.ColorUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -28,7 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * "Liquid glass" for Minecraft 26.1 (deferred GUI rendering).
+ * "Liquid glass" for Minecraft 26.1+ (deferred GUI rendering; 26.3: renderpearl pipelines).
  *
  * <p>26.1 GUIs don't draw immediately: screens add element render states that GuiRenderer batches later.
  * Shapes here are {@link Shape} elements (quads in the GUI pipeline; triangles are emitted as degenerate
@@ -58,25 +57,27 @@ public final class Glass {
         .withCull(false)
         .build();
 
-    /** Per-vertex panel parameters for the liquid shader. */
-    public static final VertexFormat LIQUID_FORMAT = VertexFormat.builder()
-        .add("Position", VertexFormatElement.POSITION)
-        .add("Color", VertexFormatElement.COLOR)
-        .add("UV0", VertexFormatElement.UV0)
-        .add("UV1", VertexFormatElement.UV1)
-        .add("UV2", VertexFormatElement.UV2)
-        .add("Normal", VertexFormatElement.NORMAL)
-        .padding(1)
+    /**
+     * Per-vertex panel parameters for the liquid shader. Same element layout as vanilla's entity format (26.3 normals
+     * are RGBA8_SNORM, so no padding), but kept as our own format so the shader's inputs are documented here.
+     */
+    public static final VertexFormat LIQUID_FORMAT = VertexFormat.builder(0)
+        .addAttribute("Position", GpuFormat.RGB32_FLOAT)
+        .addAttribute("Color", GpuFormat.RGBA8_UNORM)
+        .addAttribute("UV0", GpuFormat.RG32_FLOAT)
+        .addAttribute("UV1", GpuFormat.RG16_SINT)
+        .addAttribute("UV2", GpuFormat.RG16_SINT)
+        .addAttribute("Normal", GpuFormat.RGBA8_SNORM)
         .build();
 
-    public static final RenderPipeline LIQUID = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET)
+    /** GUI textured snippet (globals, projection, transforms, Sampler0, translucent quads) with our shader + format. */
+    public static final RenderPipeline LIQUID = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
         .withLocation(Identifier.fromNamespaceAndPath("prismglass", "pipeline/liquid_glass"))
         .withVertexShader(Identifier.fromNamespaceAndPath("prismglass", "core/liquid_glass"))
         .withFragmentShader(Identifier.fromNamespaceAndPath("prismglass", "core/liquid_glass"))
-        .withSampler("Sampler0")
         .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
         .withCull(false)
-        .withVertexFormat(LIQUID_FORMAT, VertexFormat.Mode.QUADS)
+        .withVertexBinding(0, LIQUID_FORMAT)
         .build();
 
     // ---- background snapshot ----------------------------------------------------------------------------
@@ -122,7 +123,7 @@ public final class Glass {
                 if (snapshotView != null) retired.add(new Object[]{snapshotView, snapshotCalls});
                 if (snapshot != null) retired.add(new Object[]{snapshot, snapshotCalls});
                 snapshot = RenderSystem.getDevice().createTexture(() -> "prism glass snapshot",
-                    GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING, TextureFormat.RGBA8, w, h, 1, 1);
+                    GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING, GpuFormat.RGBA8_UNORM, w, h, 1, 1);
                 snapshotView = RenderSystem.getDevice().createTextureView(snapshot);
             }
             RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(color, snapshot, 0, 0, 0, 0, 0, w, h);
@@ -130,6 +131,27 @@ public final class Glass {
             shaderBroken = true;
             dev.prismglass.Prism.LOG.error("[glass] snapshot failed, falling back to frosted glass", t);
         }
+    }
+
+    private static int liquidState; // 0 = not tried, 1 = compiled, -1 = failed
+
+    /**
+     * 26.3 compiles pipelines on first use and GuiRenderer throws if that fails, which would take the whole GUI down:
+     * try it once here (render thread, during extraction) and fall back to frosted glass if the shader is broken.
+     */
+    private static boolean liquidCompiles() {
+        if (liquidState == 0) {
+            boolean ok;
+            try {
+                ok = RenderSystem.getCompiledPipelineNullable(LIQUID) != null;
+            } catch (Throwable t) {
+                dev.prismglass.Prism.LOG.error("[glass] liquid glass shader failed", t);
+                ok = false;
+            }
+            liquidState = ok ? 1 : -1;
+            if (!ok) dev.prismglass.Prism.LOG.error("[glass] liquid glass shader didn't compile, falling back to frosted glass");
+        }
+        return liquidState > 0;
     }
 
     /** Kept for API compatibility with the 1.21.4 code; the snapshot is taken by the GuiRenderer hook. */
@@ -172,7 +194,7 @@ public final class Glass {
         // PopOut: liquid glass refracts a blurred screenshot at the panel's flat screen position, which no longer lines
         // up once the menu is tilted into the world (and with StreamProof it gets baked into the hidden layer): smeared,
         // blurry panels. Clean see-through glass instead, so the real world shows through sharply.
-        if (s.liquid() && snapshotView != null && !shaderBroken && !flat) {
+        if (s.liquid() && snapshotView != null && !shaderBroken && !flat && liquidCompiles()) {
             if (s.shadow()) submit(ctx, SHAPES, shadow(new Shape.Builder(), x, y, w, h, r, 8f,
                 ColorUtil.withAlpha(0x000000, (int) (110 * Math.min(1f, s.opacity() * 2f)))));
             ctx.guiRenderState.addGuiElement(new LiquidPanel(new Matrix3x2f(ctx.pose()), x, y, w, h, r, s,
