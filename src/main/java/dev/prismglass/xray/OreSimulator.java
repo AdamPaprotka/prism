@@ -4,7 +4,6 @@ import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.core.BlockPos.MutableBlockPos;
 import net.minecraft.core.HolderLookup.RegistryLookup;
 import net.minecraft.world.level.biome.FeatureSorter.StepFeatureData;
-import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration.TargetBlockState;
 
 import dev.prismglass.Prism;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -34,16 +33,16 @@ import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
-import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
+import net.minecraft.world.level.levelgen.feature.AbstractOreFeature;
+import net.minecraft.world.level.levelgen.feature.BlockReplacement;
+import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.OreFeature;
 import net.minecraft.world.level.levelgen.feature.ScatteredOreFeature;
-import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.placement.PlacementContext;
 import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 import java.lang.reflect.Proxy;
 import java.util.*;
-import java.util.stream.Stream;
 
 /**
  * Predicts ore positions from the world seed by re-running vanilla ore generation client-side.
@@ -64,7 +63,7 @@ import java.util.stream.Stream;
 public final class OreSimulator {
     public record Ore(BlockPos pos, Block block) {}
 
-    private record OreRef(int step, int index, PlacedFeature placed, OreConfiguration config, boolean scattered) {}
+    private record OreRef(int step, int index, PlacedFeature placed, AbstractOreFeature config, boolean scattered) {}
 
     private static HolderLookup.Provider lookup;
 
@@ -78,7 +77,7 @@ public final class OreSimulator {
     private OreSimulator(ClientLevel world, long seed, ResourceKey<Level> dim) {
         this.world = world;
         this.seed = seed;
-        if (lookup == null) lookup = VanillaRegistries.createLookup();
+        if (lookup == null) lookup = VanillaRegistries.createWorldLookup();
         boolean nether = dim == Level.NETHER;
         var params = lookup.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
             .getOrThrow(nether ? MultiNoiseBiomeSourceParameterLists.NETHER : MultiNoiseBiomeSourceParameterLists.OVERWORLD);
@@ -95,9 +94,10 @@ public final class OreSimulator {
             List<PlacedFeature> list = indexed.get(step).features();
             for (int i = 0; i < list.size(); i++) {
                 PlacedFeature pf = list.get(i);
-                ConfiguredFeature<?, ?> cf = pf.feature().value();
-                if (cf.config() instanceof OreConfiguration cfg && (cf.feature() instanceof OreFeature || cf.feature() instanceof ScatteredOreFeature)) {
-                    ores.add(new OreRef(step, i, pf, cfg, cf.feature() instanceof ScatteredOreFeature));
+                // 26.3: features carry their own config (OreFeature/ScatteredOreFeature hold targets + size)
+                Feature f = pf.feature().value();
+                if (f instanceof OreFeature || f instanceof ScatteredOreFeature) {
+                    ores.add(new OreRef(step, i, pf, (AbstractOreFeature) f, f instanceof ScatteredOreFeature));
                 }
             }
         }
@@ -155,17 +155,14 @@ public final class OreSimulator {
 
         for (OreRef ref : ores) {
             boolean wanted = false;
-            for (OreConfiguration.TargetBlockState t : ref.config().targetStates) if (targets.contains(t.state.getBlock())) { wanted = true; break; }
+            for (BlockReplacement t : ref.config().targetStates()) if (targets.contains(t.state().getBlock())) { wanted = true; break; }
             if (!wanted || !allowedIn(ref.placed(), area)) continue;
 
             random.setFeatureSeed(population, ref.index(), ref.step());
+            // same as ChunkGenerator#applyBiomeDecoration -> FeaturePlacer#placeWithBiomeCheck
             PlacementContext ctx = new PlacementContext(fakeWorld, generator, Optional.of(ref.placed()));
             try {
-                Stream<BlockPos> stream = Stream.of(origin);
-                for (PlacementModifier m : ref.placed().placement()) {
-                    stream = stream.flatMap(p -> m.getPositions(ctx, random, p));
-                }
-                stream.forEach(p -> {
+                place(ref.placed().placement(), ctx, random, origin, p -> {
                     if (ref.scattered()) scattered(ref.config(), random, p, placed, out, targets);
                     else vein(ref.config(), random, p, placed, out, targets);
                 });
@@ -174,6 +171,37 @@ public final class OreSimulator {
             }
         }
         return out;
+    }
+
+    /**
+     * Port of FeaturePlacer#place: every modifier writes all its positions at once (consuming the random in that
+     * order), then they are walked depth-first, so the feature runs at the same points with the same random state.
+     */
+    private static void place(List<PlacementModifier> placement, PlacementContext ctx, RandomSource random, BlockPos origin,
+                              java.util.function.Consumer<BlockPos> feature) {
+        if (placement.isEmpty()) {
+            feature.accept(origin);
+            return;
+        }
+        List<BlockPos> positions = new ArrayList<>();
+        it.unimi.dsi.fastutil.ints.IntList indices = new it.unimi.dsi.fastutil.ints.IntArrayList();
+        List<BlockPos> modified = new ArrayList<>();
+        positions.add(origin);
+        indices.add(0);
+        for (; !positions.isEmpty(); modified.clear()) {
+            BlockPos pos = positions.removeLast();
+            int index = indices.removeInt(indices.size() - 1);
+            placement.get(index).modify(ctx, random, pos, modified::add);
+            int next = index + 1;
+            if (next < placement.size()) {
+                for (int i = modified.size() - 1; i >= 0; i--) {
+                    positions.add(modified.get(i));
+                    indices.add(next);
+                }
+            } else {
+                for (BlockPos p : modified) feature.accept(p);
+            }
+        }
     }
 
     private Set<Holder<Biome>> biomesAround(ChunkPos cp) {
@@ -194,11 +222,11 @@ public final class OreSimulator {
     }
 
     /** Port of OreFeature#generate + generateVeinPart. */
-    private void vein(OreConfiguration config, RandomSource random, BlockPos blockPos, Map<BlockPos, BlockState> placed,
+    private void vein(AbstractOreFeature config, RandomSource random, BlockPos blockPos, Map<BlockPos, BlockState> placed,
                       List<Ore> out, Set<Block> targets) {
         float f = random.nextFloat() * (float) Math.PI;
-        float g = config.size / 8.0F;
-        int i = Mth.ceil((config.size / 16.0F * 2.0F + 1.0F) / 2.0F);
+        float g = config.size() / 8.0F;
+        int i = Mth.ceil((config.size() / 16.0F * 2.0F + 1.0F) / 2.0F);
         double startX = blockPos.getX() + Math.sin(f) * g;
         double endX = blockPos.getX() - Math.sin(f) * g;
         double startZ = blockPos.getZ() + Math.cos(f) * g;
@@ -219,7 +247,7 @@ public final class OreSimulator {
         }
         if (!ok) return;
 
-        int j = config.size;
+        int j = config.size();
         BitSet bitSet = new BitSet(horizontalSize * verticalSize * horizontalSize);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         double[] ds = new double[j * 4];
@@ -272,11 +300,11 @@ public final class OreSimulator {
                         bitSet.set(ac);
                         mutable.set(t, v, aa);
                         BlockState state = genState(mutable, placed);
-                        for (OreConfiguration.TargetBlockState target : config.targetStates) {
-                            if (OreFeature.canPlaceOre(state, pos -> genState(pos, placed), random, config, target, mutable)) {
+                        for (BlockReplacement target : config.targetStates()) {
+                            if (config.canPlaceOre(state, pos -> genState(pos, placed), random, target, mutable)) {
                                 BlockPos at = mutable.immutable();
-                                placed.put(at, target.state);
-                                if (targets.contains(target.state.getBlock())) out.add(new Ore(at, target.state.getBlock()));
+                                placed.put(at, target.state());
+                                if (targets.contains(target.state().getBlock())) out.add(new Ore(at, target.state().getBlock()));
                                 break;
                             }
                         }
@@ -287,9 +315,9 @@ public final class OreSimulator {
     }
 
     /** Port of ScatteredOreFeature#generate (ancient debris, nether gold...). */
-    private void scattered(OreConfiguration config, RandomSource random, BlockPos origin, Map<BlockPos, BlockState> placed,
+    private void scattered(AbstractOreFeature config, RandomSource random, BlockPos origin, Map<BlockPos, BlockState> placed,
                            List<Ore> out, Set<Block> targets) {
-        int count = random.nextInt(config.size + 1);
+        int count = random.nextInt(config.size() + 1);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         for (int j = 0; j < count; j++) {
             int spread = Math.min(j, 7);
@@ -298,11 +326,11 @@ public final class OreSimulator {
             int dz = Math.round((random.nextFloat() - random.nextFloat()) * spread);
             mutable.setWithOffset(origin, dx, dy, dz);
             BlockState state = genState(mutable, placed);
-            for (OreConfiguration.TargetBlockState target : config.targetStates) {
-                if (OreFeature.canPlaceOre(state, pos -> genState(pos, placed), random, config, target, mutable)) {
+            for (BlockReplacement target : config.targetStates()) {
+                if (config.canPlaceOre(state, pos -> genState(pos, placed), random, target, mutable)) {
                     BlockPos at = mutable.immutable();
-                    placed.put(at, target.state);
-                    if (targets.contains(target.state.getBlock())) out.add(new Ore(at, target.state.getBlock()));
+                    placed.put(at, target.state());
+                    if (targets.contains(target.state().getBlock())) out.add(new Ore(at, target.state().getBlock()));
                     break;
                 }
             }

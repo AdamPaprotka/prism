@@ -1,10 +1,13 @@
 package dev.prismglass.module.world;
 
+import dev.prismglass.Prism;
 import dev.prismglass.module.Category;
 import dev.prismglass.module.Module;
 import dev.prismglass.setting.*;
 import dev.prismglass.util.InvUtil;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.data.recipes.RecipeOutput;
+import net.minecraft.data.recipes.packs.VanillaBrewingProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.BrewingStandMenu;
@@ -15,6 +18,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
+import net.minecraft.world.item.crafting.BrewingInput;
+import net.minecraft.world.item.crafting.BrewingRecipe;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +30,9 @@ import java.util.List;
  * powder and takes the finished potions out, then starts over while you have water bottles. The next ingredient is
  * the first one in the recipe that the stand's own brewing rules accept for the bottles in it, so a half-brewed
  * stand carries on from where it is.
+ *
+ * <p>26.3 made brewing data-driven ({@link BrewingRecipe}) and the client no longer knows the mixes, so they are
+ * rebuilt once from vanilla's own {@link VanillaBrewingProvider} (what the built-in data pack is generated from).
  */
 public class AutoBrewer extends Module {
     public final ModeSetting potion = mode("Potion", "Strength", "What to brew.",
@@ -35,6 +44,8 @@ public class AutoBrewer extends Module {
 
     private int wait;
     public int batches;
+
+    private static List<BrewingRecipe> vanillaRecipes;
 
     public AutoBrewer() { super("AutoBrewer", "Brews the chosen potion while a brewing stand is open.", Category.WORLD); }
 
@@ -66,7 +77,6 @@ public class AutoBrewer extends Module {
         if (mc.gui.screen() == null || !(mc.player.containerMenu instanceof BrewingStandMenu menu)) { wait = 0; return; }
         if (wait > 0) { wait--; return; }
         if (!menu.getCarried().isEmpty() || !InvUtil.canClick()) return;
-        var brewing = mc.level.potionBrewing();
 
         if (fuel.get() && menu.getFuel() == 0 && menu.getSlot(4).getItem().isEmpty() && one(menu, Items.BLAZE_POWDER, 4)) return;
         if (menu.getBrewingTicks() > 0 || !menu.getSlot(3).getItem().isEmpty()) return; // busy
@@ -76,7 +86,7 @@ public class AutoBrewer extends Module {
         if (bottles.isEmpty()) { loadWater(menu); return; }
         for (Item ing : recipe()) {
             ItemStack test = new ItemStack(ing);
-            if (bottles.stream().allMatch(b -> brewing.hasMix(b, test))) {
+            if (bottles.stream().allMatch(b -> hasMix(b, test))) {
                 if (!one(menu, ing, 3)) wait = 20; // out of it: try again in a second
                 return;
             }
@@ -84,6 +94,37 @@ public class AutoBrewer extends Module {
         // nothing more to add: done
         if (!takeOut.get()) return;
         for (int i = 0; i < 3; i++) if (!menu.getSlot(i).getItem().isEmpty()) { click(menu, i, 0, ContainerInput.QUICK_MOVE); wait = 1; return; }
+    }
+
+    /** Old {@code PotionBrewing#hasMix}: some brewing recipe turns this bottle into something with this reagent. */
+    private static boolean hasMix(ItemStack bottle, ItemStack reagent) {
+        BrewingInput in = new BrewingInput(bottle, reagent);
+        for (BrewingRecipe r : recipes()) if (r.matches(in)) return true;
+        return false;
+    }
+
+    private static synchronized List<BrewingRecipe> recipes() {
+        if (vanillaRecipes != null) return vanillaRecipes;
+        List<BrewingRecipe> out = new ArrayList<>();
+        try {
+            // the provider only ever calls accept(id, recipe, advancement) on its output
+            RecipeOutput sink = (RecipeOutput) Proxy.newProxyInstance(RecipeOutput.class.getClassLoader(), new Class<?>[]{RecipeOutput.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "accept" -> {
+                        if (args != null && args.length == 3 && args[1] instanceof BrewingRecipe r) out.add(r);
+                        yield null;
+                    }
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    case "toString" -> "PrismBrewingSink";
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+            new VanillaBrewingProvider(sink) {}.buildRecipes();
+            Prism.LOG.info("[autobrewer] {} vanilla brewing recipes", out.size());
+        } catch (Throwable t) {
+            Prism.LOG.error("[autobrewer] could not build the brewing recipes", t);
+        }
+        return vanillaRecipes = List.copyOf(out);
     }
 
     private void loadWater(AbstractContainerMenu menu) {
