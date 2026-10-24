@@ -195,8 +195,8 @@ final class ModCases {
             enable(CityEsp.class);
         }, () -> {
             if (caseTicks == 10) dev.prismglass.Prism.fakePlayers().join("Holed");
-            if (caseTicks == 12) cmd(f("tp @p %.1f %d %.1f", (px) + 0.5, py, (pz) + 0.5));
-            return caseTicks > 20 && "4".equals(dev.prismglass.Prism.modules().get(CityEsp.class).getInfo());
+            if (caseTicks == 12) cmd(f("tp @p %.1f %d %.1f 0 30", (px) + 0.5, py, (pz) + 0.5)); // facing the hole: the boxes are in the shot
+            return shot("cityesp", 18) && caseTicks > 20 && "4".equals(dev.prismglass.Prism.modules().get(CityEsp.class).getInfo());
         }, () -> {
             disable(CityEsp.class);
             dev.prismglass.Prism.fakePlayers().leave("Holed");
@@ -349,7 +349,7 @@ final class ModCases {
                 cmd("give @p obsidian 16");
                 enable(dev.prismglass.module.combat.AntiAnvil.class);
             }, () -> {
-                if (caseTicks == 6) cmd(f("summon falling_block %.1f %d %.1f {BlockState:{Name:\"minecraft:anvil\"},Time:1}", (px) + 0.5, py + 10, (pz) + 0.5));
+                if (caseTicks == 6) cmd(f("summon falling_block %.1f %d %.1f {BlockState:\"minecraft:anvil\",Time:1}", (px) + 0.5, py + 10, (pz) + 0.5));
                 var roof = level().getBlockState(new BlockPos(px, py + 2, pz));
                 boolean anvilGone = serverEntity(net.minecraft.world.entity.item.FallingBlockEntity.class) == null;
                 boolean safe = !level().getBlockState(new BlockPos(px, py, pz)).is(net.minecraft.tags.BlockTags.ANVIL)

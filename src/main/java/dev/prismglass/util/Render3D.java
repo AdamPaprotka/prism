@@ -264,19 +264,20 @@ public final class Render3D {
 
         /**
          * Upload and draw everything into {@code target} (with its depth when {@code depth}), then reset. An optional
-         * texture is bound as {@code samplerName} for every draw.
+         * texture is bound as {@code samplerName} for every draw. Returns whether anything was drawn.
          */
-        public void draw(Supplier<String> label, RenderTarget target, boolean depth, @Nullable String samplerName,
-                         @Nullable GpuTextureView texture, @Nullable GpuSampler sampler) {
-            if (!open) return;
+        public boolean draw(Supplier<String> label, RenderTarget target, boolean depth, @Nullable String samplerName,
+                            @Nullable GpuTextureView texture, @Nullable GpuSampler sampler) {
+            if (!open) return false;
             try {
+                // upload first: it finishes the open vertex builder, so only then does the last draw know its vertices
+                buffer.upload();
                 boolean any = false;
                 for (StagedVertexBuffer.Draw d : draws) {
                     buffer.requestIndexCount(d);
                     any |= !d.isEmpty();
                 }
-                buffer.upload();
-                if (!any || target.getColorTextureView() == null) return;
+                if (!any || target.getColorTextureView() == null) return false;
                 RenderSystem.resizeAllAutoStorageIndexBuffers();
                 GpuBufferSlice transforms = RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrixCopy());
                 GpuTextureView depthView = depth && target.hasDepth() ? target.getDepthTextureView() : null;
@@ -294,6 +295,7 @@ public final class Render3D {
                         pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
                     }
                 }
+                return true;
             } finally {
                 buffer.endFrame();
                 draws.clear();

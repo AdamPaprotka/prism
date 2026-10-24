@@ -21,6 +21,9 @@ public abstract class ClientConnectionMixin {
         at = @At("HEAD"), cancellable = true)
     private void prism$send(Packet<?> packet, ChannelFutureListener callbacks, boolean flush, CallbackInfo ci) {
         if (dev.prismglass.manager.BotPlayers.isBot((Connection) (Object) this)) return; // bots' own traffic
+        if (Prism.guard() != null && Prism.guard().needsTickEndBefore(packet)) {
+            ((Connection) (Object) this).send(net.minecraft.network.protocol.game.ServerboundClientTickEndPacket.INSTANCE);
+        }
         if (Prism.onPacketSend(packet)) ci.cancel();
     }
 

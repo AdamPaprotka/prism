@@ -20,6 +20,7 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.world.item.crafting.BrewingInput;
 import net.minecraft.world.item.crafting.BrewingRecipe;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
@@ -117,7 +118,11 @@ public class AutoBrewer extends Module {
                     case "hashCode" -> System.identityHashCode(proxy);
                     case "equals" -> proxy == args[0];
                     case "toString" -> "PrismBrewingSink";
-                    default -> throw new UnsupportedOperationException(method.getName());
+                    // Fabric's data-gen API injects default methods (getRecipeIdentifier...) that the provider calls
+                    default -> {
+                        if (method.isDefault()) yield InvocationHandler.invokeDefault(proxy, method, args);
+                        throw new UnsupportedOperationException(method.getName());
+                    }
                 });
             new VanillaBrewingProvider(sink) {}.buildRecipes();
             Prism.LOG.info("[autobrewer] {} vanilla brewing recipes", out.size());

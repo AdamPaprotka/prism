@@ -170,6 +170,7 @@ public final class HoloTest {
                 shot("prism-holo-sp-main.png"); // what capture sees
                 dev.prismglass.streamproof.Overlay.debugGrabName = "prism-holo-sp-overlay.png"; // the hidden layer
             } else shot("prism-holo-open.png");
+            check("panel quad drawn into the world", Holo.panelDrawn());
             // a module with a toggle and a slider, in a panel row we can see
             if (gui() != null) {
                 for (Category c : new Category[]{Category.MOVEMENT, Category.PLAYER, Category.RENDER, Category.WORLD}) {

@@ -366,9 +366,14 @@ public final class Holo {
             pu = uu;
         }
         // StreamProof on: hidden layer (with the world's camera, so it lines up), else the main target
-        BATCH.draw(() -> "Prism holo panel", Render3D.overlayTarget(), true, "Sampler0", view,
+        panelDrawn = BATCH.draw(() -> "Prism holo panel", Render3D.overlayTarget(), true, "Sampler0", view,
             RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
     }
+
+    private static boolean panelDrawn;
+
+    /** Dev holo test: the last world pass really drew the panel quad (not just decided to). */
+    public static boolean panelDrawn() { return panelDrawn; }
 
     private static void vert(VertexConsumer vc, PoseStack.Pose pose, Vec3 cam, Vec3 p, float u, float v) {
         vc.addVertex(pose, (float) (p.x - cam.x), (float) (p.y - cam.y), (float) (p.z - cam.z)).setUv(u, v);

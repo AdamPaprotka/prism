@@ -181,7 +181,7 @@ public final class Overlay {
     private static void clearForNextFrame() {
         RenderTarget main = mc.gameRenderer.mainRenderTarget();
         if (target.width != main.width || target.height != main.height) target.resize(main.width, main.height);
-        RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(target.getColorTexture(), new Vector4f(0, 0, 0, 0), target.getDepthTexture(), 1.0);
+        RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(target.getColorTexture(), new Vector4f(0, 0, 0, 0), target.getDepthTexture(), 0.0); // 26.3 depth: 0 = far
     }
 
     private static void syncWindow() {

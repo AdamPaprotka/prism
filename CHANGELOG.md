@@ -1,5 +1,16 @@
 # Prism Glass changelog
 
+## 1.6.3 for 26.3 - 2026-10-24
+
+Port of 1.6.3 to Minecraft 26.3 (Fabric Loader 0.20.1, Fabric API 0.165.0, Loom 1.19.3 on Gradle 9.8.2, Java 25). Same modules and settings; old configs and GLFW key binds carry over. API mapping notes in PORTING.md.
+
+- **Input:** 26.3 moved from GLFW to SDL3. Binds are stored as vanilla key names now; a bind saved by an older Prism (a GLFW number) is translated once, so it stays on the same physical key.
+- **Rendering:** ported to the new renderer (reversed depth, frame graph). Tested on the OpenGL backend. StreamProof needs OpenGL (a Vulkan window can't be transparent): turning it on under Vulkan switches the Graphics API setting to OpenGL and asks for a restart. Fixed during the port: the last group of 3D shapes in a frame (and the whole PopOut panel) was dropped because it was counted before its vertices were finished.
+- **Movement packets:** 26.3 servers kick a client that sends two position packets in one tick ("Invalid move player packet received"). Multi-packet moves (ClickTP hops, PacketFly, Blink releases, Step) now get a tick-end packet slipped in between, so they keep working.
+- **EntityControl:** 26.3 servers snap back a ride steered by a passenger they don't think controls it. New **ClientOnly** setting (on by default) keeps that ride's movement client-side instead of rubber-banding.
+- **AutoBrewer:** brewing became data-driven in 26.3; the mixes are rebuilt from vanilla's own brewing data.
+- Dev tests run in a hidden 1920x1080 window (a hidden window can't go fullscreen under SDL without showing).
+
 ## 1.6.3 - 2026-10-23
 
 ### 20 more modules (the rest of the list)

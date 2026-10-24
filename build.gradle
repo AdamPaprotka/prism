@@ -22,7 +22,12 @@ loom {
             if (project.hasProperty('audit')) vmArg '-Dprismglass.audit=true'
             // automated tests run in an invisible, unfocused window (StreamProof/fullscreen tests need a visible one)
             if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest', 'holotest', 'sustest', 'rebreaktest', 'pingspiketest', 'pluginstest', 'proxytest', 'bottest', 'behindtest', 'inspecttest', 'modtest']
-                    .any { project.hasProperty(it) } && !project.hasProperty('visible')) vmArg '-Dprismglass.hidden=true'
+                    .any { project.hasProperty(it) } && !project.hasProperty('visible')) {
+                vmArg '-Dprismglass.hidden=true'
+                // the tests were laid out against a 1920x1080 window (26.1.2's hidden fullscreen); a hidden window can't
+                // go fullscreen on 26.3 without showing, so open it at that size instead
+                programArgs '--width', '1920', '--height', '1080'
+            }
             if (project.hasProperty('guitest')) vmArg '-Dprismglass.guitest=true'
             if (project.hasProperty('guiblocky')) vmArg '-Dprismglass.guiblocky=true'
             if (project.hasProperty('hudtest')) vmArg '-Dprismglass.hudtest=true'

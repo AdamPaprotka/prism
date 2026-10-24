@@ -39,6 +39,17 @@ public final class PacketGuard {
     /** Slot change deferred to the next tick because it would have broken order this tick. */
     private int pendingSlot = -1;
     private boolean lastShift;
+    /** A position packet went out since the last ClientTickEnd (26.3 kicks for a second one). */
+    private boolean positionSent;
+
+    /**
+     * 26.3 disconnects a client that sends two position packets without a ClientTickEnd between them, which
+     * multi-packet moves (ClickTP hops, PacketFly, Blink releases, Step packets) do. ClientConnectionMixin asks
+     * this before every outgoing packet and slips a tick end in first.
+     */
+    public boolean needsTickEndBefore(Packet<?> p) {
+        return positionSent && p instanceof ServerboundMovePlayerPacket move && move.hasPosition();
+    }
 
     /** Called for every outgoing packet before it is sent. May cancel it. */
     public void onSend(PacketEvent event) {
@@ -53,14 +64,16 @@ public final class PacketGuard {
             return;
         }
 
-        if (p instanceof ServerboundMovePlayerPacket) {
+        if (p instanceof ServerboundMovePlayerPacket move) {
             resetActions();
             afterFlying = true;
+            if (move.hasPosition()) positionSent = true;
             return;
         }
         if (p instanceof ServerboundClientTickEndPacket) {
             if (!afterFlying) resetActions(); // 1.21.2+: tick end counts as the tick packet when no movement was sent
             afterFlying = false;
+            positionSent = false;
             return;
         }
 
