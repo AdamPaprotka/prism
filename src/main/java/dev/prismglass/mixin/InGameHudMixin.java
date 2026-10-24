@@ -1,7 +1,7 @@
 package dev.prismglass.mixin;
 
 import dev.prismglass.module.render.NoRender;
-import net.minecraft.client.gui.Gui;
+import net.minecraft.client.gui.Hud;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(Gui.class)
+@Mixin(Hud.class)
 public abstract class InGameHudMixin {
     @Inject(method = "extractTextureOverlay", at = @At("HEAD"), cancellable = true)
     private void prism$overlay(GuiGraphicsExtractor ctx, Identifier texture, float opacity, CallbackInfo ci) {

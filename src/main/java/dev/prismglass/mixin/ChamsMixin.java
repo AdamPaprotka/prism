@@ -11,9 +11,8 @@ import net.minecraft.client.model.Model;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
-import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.UvMapping;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -39,23 +38,24 @@ public abstract class ChamsMixin {
     }
 
     @WrapOperation(method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/TextureAtlasSprite;ILnet/minecraft/client/renderer/feature/ModelFeatureRenderer$CrumblingOverlay;)V"))
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/UvMapping;I)V"))
     private void prism$chamsSubmit(SubmitNodeCollector collector, Model<?> model, Object stateObj, PoseStack pose, RenderType type, int light, int overlay,
-                                   int tint, TextureAtlasSprite sprite, int outline, ModelFeatureRenderer.CrumblingOverlay crumbling, Operation<Void> original) {
+                                   int tint, UvMapping uv, int outline, Operation<Void> original) {
+        // 26.3: the sprite argument became a UvMapping and the crumbling overlay argument is gone
         if (!(stateObj instanceof LivingEntityRenderState state) || ((ChamsState) state).prism$chams() == 0) {
-            original.call(collector, model, stateObj, pose, type, light, overlay, tint, sprite, outline, crumbling);
+            original.call(collector, model, stateObj, pose, type, light, overlay, tint, uv, outline);
             return;
         }
         int color = ((ChamsState) state).prism$chams();
         if (((ChamsState) state).prism$ghost()) {
             var pop = Prism.modules().get(dev.prismglass.module.render.PopChams.class);
-            original.call(collector, model, stateObj, pose, ChamsRender.type(getTextureLocation(state), pop.throughWalls.get()), 0xF000F0, overlay, color, null, 0, null);
+            original.call(collector, model, stateObj, pose, ChamsRender.type(getTextureLocation(state), pop.throughWalls.get()), 0xF000F0, overlay, color, null, 0);
             return;
         }
         Chams chams = Prism.modules().get(Chams.class);
-        original.call(collector, model, stateObj, pose, type, light, overlay, chams.tint() ? chams.tintOf(color) : tint, sprite, outline, crumbling);
+        original.call(collector, model, stateObj, pose, type, light, overlay, chams.tint() ? chams.tintOf(color) : tint, uv, outline);
         if (chams.walls()) {
-            original.call(collector, model, stateObj, pose, ChamsRender.type(getTextureLocation(state), true), 0xF000F0, overlay, color, null, 0, null);
+            original.call(collector, model, stateObj, pose, ChamsRender.type(getTextureLocation(state), true), 0xF000F0, overlay, color, null, 0);
         }
     }
 

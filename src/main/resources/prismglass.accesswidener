@@ -37,7 +37,7 @@ mutable field net/minecraft/network/protocol/game/ClientboundExplodePacket playe
 accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure startHeight Lnet/minecraft/world/level/levelgen/heightproviders/HeightProvider;
 accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure projectStartToHeightmap Ljava/util/Optional;
 accessible method net/minecraft/core/Holder$Reference bindTags (Ljava/util/Collection;)V
-accessible method net/minecraft/world/level/chunk/ChunkGeneratorStructureState <init> (Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeSource;JJLjava/util/List;)V
+accessible method net/minecraft/world/level/chunk/ChunkGeneratorStructureState <init> (Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeSource;JLnet/minecraft/world/level/ChunkPos;JLjava/util/List;)V
 mutable field net/minecraft/world/level/levelgen/structure/Structure settings Lnet/minecraft/world/level/levelgen/structure/Structure$StructureSettings;
 accessible field net/minecraft/world/level/levelgen/structure/Structure settings Lnet/minecraft/world/level/levelgen/structure/Structure$StructureSettings;
 

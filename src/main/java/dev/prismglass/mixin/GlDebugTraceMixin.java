@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /** Dev only (-Dprismglass.gltrace=true): stack trace for GL API errors, to find which call made them. */
-@Mixin(targets = "com.mojang.blaze3d.opengl.GlDebug")
+@Mixin(targets = "com.mojang.renderpearl.backend.opengl.GlDebug")
 public abstract class GlDebugTraceMixin {
     private static final boolean TRACE = Boolean.getBoolean("prismglass.gltrace");
 

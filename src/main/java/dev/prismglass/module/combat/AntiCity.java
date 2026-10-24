@@ -37,7 +37,7 @@ public class AntiCity extends Module {
     public void onTick() {
         List<BlockPos> surround = Surround.positions();
         Set<BlockPos> ring = new LinkedHashSet<>(surround);
-        var map = ((LevelRendererAccessor) mc.levelRenderer).prism$destroyingBlocks();
+        var map = ((LevelRendererAccessor) mc.level).prism$destroyingBlocks();
         for (var e : map.int2ObjectEntrySet()) {
             if (e.getIntKey() == mc.player.getId()) continue; // our own mining
             BlockDestructionProgress p = e.getValue();

@@ -51,7 +51,7 @@ public class BreakIndicators extends Module {
         float dt = lastNanos == 0 ? 0 : Math.min(0.1f, (now - lastNanos) / 1e9f);
         lastNanos = now;
         shown.clear();
-        var map = ((LevelRendererAccessor) mc.levelRenderer).prism$destroyingBlocks();
+        var map = ((LevelRendererAccessor) mc.level).prism$destroyingBlocks();
         it.unimi.dsi.fastutil.longs.LongOpenHashSet live = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
         for (var entry : map.int2ObjectEntrySet()) {
             int id = entry.getIntKey();

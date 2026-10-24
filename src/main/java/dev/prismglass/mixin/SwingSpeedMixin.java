@@ -11,7 +11,8 @@ import org.spongepowered.asm.mixin.injection.At;
 /** HandView SwingSpeed: the local player's swing animation length (attack cooldown is separate and untouched). */
 @Mixin(LivingEntity.class)
 public abstract class SwingSpeedMixin {
-    @ModifyReturnValue(method = "getCurrentSwingDuration", at = @At("RETURN"))
+    // 26.3: getCurrentSwingDuration() became getModifiedSwingDuration(SwingAnimation), read when a swing starts
+    @ModifyReturnValue(method = "getModifiedSwingDuration", at = @At("RETURN"))
     private int prism$swingSpeed(int original) {
         if ((Object) this != Minecraft.getInstance().player) return original;
         HandView hv = Prism.modules().get(HandView.class);
