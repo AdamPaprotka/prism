@@ -47,7 +47,7 @@ public final class FlightTest {
             mc.options.pauseOnLostFocus = false;
             String name = "prismflight-" + System.currentTimeMillis();
             LevelSettings info = new LevelSettings(name, GameType.SURVIVAL, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
-            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), WorldPresets::createFlatWorldDimensions, null);
+            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), r -> r.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
         if (mc.player == null || mc.level == null) return;
@@ -55,8 +55,9 @@ public final class FlightTest {
         Flight flight = Prism.modules().get(Flight.class);
         Freecam freecam = Prism.modules().get(Freecam.class);
         if (t == 40) {
-            log("window visible=" + org.lwjgl.glfw.GLFW.glfwGetWindowAttrib(mc.getWindow().handle(), org.lwjgl.glfw.GLFW.GLFW_VISIBLE)
-                + " focused=" + org.lwjgl.glfw.GLFW.glfwGetWindowAttrib(mc.getWindow().handle(), org.lwjgl.glfw.GLFW.GLFW_FOCUSED));
+            long flags = org.lwjgl.sdl.SDLVideo.SDL_GetWindowFlags(mc.getWindow().handle());
+            log("window visible=" + ((flags & org.lwjgl.sdl.SDLVideo.SDL_WINDOW_HIDDEN) == 0 ? 1 : 0)
+                + " focused=" + ((flags & org.lwjgl.sdl.SDLVideo.SDL_WINDOW_INPUT_FOCUS) != 0 ? 1 : 0));
             flight.mode.parse("Vanilla");
             flight.setEnabled(true);
             freecam.setEnabled(true);
@@ -104,7 +105,7 @@ public final class FlightTest {
             }
             var server = mc.getSingleplayerServer();
             var lvl = server.overworld();
-            var list = lvl.getEntities(net.minecraft.world.entity.EntityType.ENDER_PEARL, e -> e.entityTags().contains("prismtest"));
+            var list = lvl.getEntities(net.minecraft.world.entity.EntityTypes.ENDER_PEARL, e -> e.entityTags().contains("prismtest"));
             if (!list.isEmpty()) { seenServer = true; lastServerPos = list.get(0).position(); lastServerAge = list.get(0).tickCount; }
             else if (seenServer && predicted != null) {
                 pearlDone = true;

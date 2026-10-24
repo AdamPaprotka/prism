@@ -139,11 +139,11 @@ public final class ProxyTest {
         if (pingState == 3 && isoDone && !shot) {
             shot = true;
             check("new identity accepted", tor.newIdentity());
-            mc.setScreen(new dev.prismglass.gui.ProxiesScreen(null));
+            mc.gui.setScreen(new dev.prismglass.gui.ProxiesScreen(null));
             pingState = 4;
             readyAt = ticks;
         }
-        if (pingState == 4 && ticks - readyAt == 30) Screenshot.grab(mc.gameDirectory, "prism-proxies.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (pingState == 4 && ticks - readyAt == 30) Screenshot.grab(mc.gameDirectory, "prism-proxies.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (pingState == 4 && ticks - readyAt == 50) finish();
     }
 }

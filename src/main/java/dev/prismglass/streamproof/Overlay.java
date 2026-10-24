@@ -93,13 +93,13 @@ public final class Overlay {
 
     /** Start of Prism's GUI content (HUD, ClickGUI): everything from here on goes to the hidden layer. */
     public static void markGui() {
-        if (active()) ((PrismGuiState) mc.gameRenderer.getGameRenderState().guiRenderState).prism$markOverlay();
+        if (active()) ((PrismGuiState) mc.gameRenderer.gameRenderState().guiRenderState).prism$markOverlay();
     }
 
     /** Render3D.begin: give the overlay the world's depth so non-xray boxes are still hidden behind walls. */
     public static void beginWorld() {
         if (!active()) return;
-        RenderTarget main = mc.getMainRenderTarget();
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
         // size changes are applied at the end of the frame (present); for one frame after a resize, skip occlusion
         if (target.width == main.width && target.height == main.height) target.copyDepthFrom(main);
     }
@@ -146,7 +146,7 @@ public final class Overlay {
     }
 
     private static void clearForNextFrame() {
-        RenderTarget main = mc.getMainRenderTarget();
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
         if (target.width != main.width || target.height != main.height) target.resize(main.width, main.height);
         RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(target.getColorTexture(), 0, target.getDepthTexture(), 1.0);
     }
@@ -260,7 +260,7 @@ public final class Overlay {
             glfwMakeContextCurrent(main);
             GL.setCapabilities(mainCaps);
         }
-        RenderTarget m = mc.getMainRenderTarget();
+        RenderTarget m = mc.gameRenderer.mainRenderTarget();
         target = new TextureTarget("prism streamproof", m.width, m.height, true);
         clearForNextFrame();
         lastX = Integer.MIN_VALUE;

@@ -13,7 +13,7 @@ public abstract class ClientPlayNetworkHandlerMixin {
     @Inject(method = "sendChat", at = @At("HEAD"), cancellable = true)
     private void prism$command(String message, CallbackInfo ci) {
         if (Prism.commands().handle(message)) {
-            Minecraft.getInstance().gui.getChat().addRecentChat(message);
+            Minecraft.getInstance().gui.hud.getChat().addRecentChat(message);
             ci.cancel();
         }
     }

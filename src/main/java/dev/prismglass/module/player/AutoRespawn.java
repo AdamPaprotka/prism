@@ -13,9 +13,9 @@ public class AutoRespawn extends Module {
 
     @Override
     public void onTick() {
-        if (mc.screen instanceof DeathScreen) {
+        if (mc.gui.screen() instanceof DeathScreen) {
             mc.player.respawn();
-            mc.setScreen(null);
+            mc.gui.setScreen(null);
         }
     }
 }

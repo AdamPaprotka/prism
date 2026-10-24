@@ -3,6 +3,7 @@ package dev.prismglass.module.render;
 import dev.prismglass.module.Category;
 import dev.prismglass.module.Module;
 import dev.prismglass.setting.*;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.attribute.EnvironmentAttribute;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 
@@ -27,10 +28,11 @@ public class Ambience extends Module {
     /** AmbienceMixin: the value to use for this attribute (the original when untouched). */
     @SuppressWarnings("unchecked")
     public <V> V value(EnvironmentAttribute<V> attr, V original) {
-        if (attr == EnvironmentAttributes.SKY_COLOR && sky.get()) return (V) Integer.valueOf(skyColor.color() | 0xFF000000);
-        if (attr == EnvironmentAttributes.FOG_COLOR && fog.get()) return (V) Integer.valueOf(fogColor.color() | 0xFF000000);
-        if (attr == EnvironmentAttributes.CLOUD_COLOR && clouds.get()) return (V) Integer.valueOf(cloudColor.color());
-        if (attr == EnvironmentAttributes.WATER_FOG_COLOR && water.get()) return (V) Integer.valueOf(waterColor.color() | 0xFF000000);
+        // 26.3: colour attributes are Vector3fc (RGB) / Vector4fc (ARGB, clouds), no longer packed ints
+        if (attr == EnvironmentAttributes.SKY_COLOR && sky.get()) return (V) ARGB.vector3fFromRGB24(skyColor.color());
+        if (attr == EnvironmentAttributes.FOG_COLOR && fog.get()) return (V) ARGB.vector3fFromRGB24(fogColor.color());
+        if (attr == EnvironmentAttributes.CLOUD_COLOR && clouds.get()) return (V) ARGB.vector4fFromARGB32(cloudColor.color());
+        if (attr == EnvironmentAttributes.WATER_FOG_COLOR && water.get()) return (V) ARGB.vector3fFromRGB24(waterColor.color());
         float k = fogDistance.getFloat();
         if (k != 1 && original instanceof Float f && (attr == EnvironmentAttributes.FOG_START_DISTANCE || attr == EnvironmentAttributes.FOG_END_DISTANCE
             || attr == EnvironmentAttributes.SKY_FOG_END_DISTANCE || attr == EnvironmentAttributes.WATER_FOG_START_DISTANCE

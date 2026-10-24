@@ -49,7 +49,7 @@ public final class BotTest {
             Prism.commands().handle(".sayplayer PrismBot hello from the bot");
             Prism.commands().handle(".sayplayer all /me waves");
         }
-        if (t == 260) Screenshot.grab(mc.gameDirectory, "prism-bots.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (t == 260) Screenshot.grab(mc.gameDirectory, "prism-bots.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (t == 280) Prism.commands().handle(".leaveplayer PrismBot");
         if (t == 340) {
             check("bot gone after leave", bots.get("PrismBot") == null && mc.getConnection().getPlayerInfo("PrismBot") == null);

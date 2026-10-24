@@ -145,7 +145,7 @@ public final class StaffTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         StaffWatcher sw = Prism.modules().get(StaffWatcher.class);
@@ -180,7 +180,7 @@ public final class StaffTest {
             spawn("Ghost", -5.5, 6.5, false);
             spawn("Sneaky", 5.5, 4.5, false);
         }
-        if (t == 48) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-staffpop.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (t == 48) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-staffpop.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (t == 55) {
             check("rank [Admin] looking at us pops once (pops=" + sw.pops + ", last=" + sw.lastPopName + ")", sw.pops == 1 && sw.lastPopName.equals("Steve2"));
             String online = String.join(", ", sw.onlineStaff()).replaceAll("§.", "");

@@ -48,15 +48,15 @@ public class ChestStealer extends Module {
     @Override
     public void onTick() {
         long now = System.currentTimeMillis();
-        if (mc.screen instanceof ContainerScreen || mc.screen instanceof ShulkerBoxScreen) {
-            AbstractContainerScreen<?> s = (AbstractContainerScreen<?>) mc.screen;
+        if (mc.gui.screen() instanceof ContainerScreen || mc.gui.screen() instanceof ShulkerBoxScreen) {
+            AbstractContainerScreen<?> s = (AbstractContainerScreen<?>) mc.gui.screen();
             if (s != screen) { screen = s; nextClick = now + openDelay.getInt(); }
             if (now < nextClick) return;
             steal(s.getMenu(), now);
             return;
         }
         screen = null;
-        if (equipPending && mc.screen == null && now >= nextEquip) {
+        if (equipPending && mc.gui.screen() == null && now >= nextEquip) {
             AutoArmor armor = Prism.modules().get(AutoArmor.class);
             if (armor.findUpgrade() == null) { equipPending = false; return; }
             if (!InvUtil.canClick()) return;

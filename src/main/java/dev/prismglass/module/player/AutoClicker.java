@@ -19,7 +19,7 @@ public class AutoClicker extends Module {
 
     @Override
     public void onTick() {
-        if (!mc.options.keyAttack.isDown() || mc.screen != null) return;
+        if (!mc.options.keyAttack.isDown() || mc.gui.screen() != null) return;
         if (onlyEntities.get() && !(mc.hitResult instanceof EntityHitResult)) return;
         if (cooldown.get()) {
             if (CombatUtil.cooldownReady()) mc.startAttack();

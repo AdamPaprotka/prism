@@ -204,7 +204,7 @@ public class StructureFinder extends Module {
         SIGNATURES.put(Blocks.NETHER_BRICK_FENCE, new Signature("fortress", 3, 8));
         SIGNATURES.put(Blocks.PURPUR_PILLAR, new Signature("end_city", 3, 8));
         SIGNATURES.put(Blocks.PURPUR_BLOCK, new Signature("end_city", 8, 8));
-        SIGNATURES.put(Blocks.BLUE_TERRACOTTA, new Signature("desert_pyramid", 1, 7));
+        SIGNATURES.put(Blocks.DYED_TERRACOTTA.pick(net.minecraft.world.item.DyeColor.BLUE), new Signature("desert_pyramid", 1, 7));
         SIGNATURES.put(Blocks.TRIPWIRE_HOOK, new Signature("jungle_temple", 1, 6));
         SIGNATURES.put(Blocks.CRYING_OBSIDIAN, new Signature("ruined_portal", 1, 5));
         SIGNATURES.put(Blocks.SPAWNER, new Signature("spawner", 1, 4));

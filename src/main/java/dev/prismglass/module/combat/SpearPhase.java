@@ -36,7 +36,7 @@ public class SpearPhase extends Module {
 
     @Override
     public void onTick() {
-        boolean down = KeyUtil.isDown(dashKey.get()) && mc.screen == null;
+        boolean down = KeyUtil.isDown(dashKey.get()) && mc.gui.screen() == null;
         if (down && (!wasDown || chain.get())) stage = 1;
         // swap back once the stab went out (the swap reset the charge, so it can take a few ticks)
         if (restore != -1 && stage == 0) { InvUtil.restore(restore); restore = -1; }
@@ -63,8 +63,7 @@ public class SpearPhase extends Module {
         Prism.rotations().request(yaw, pitch, 85);
         if (Math.abs(net.minecraft.util.Mth.wrapDegrees(Prism.rotations().getServerYaw() - yaw)) > 2 || Math.abs(Prism.rotations().getServerPitch() - pitch) > 2) return;
         PiercingWeapon pw = mc.player.getMainHandItem().get(DataComponents.PIERCING_WEAPON);
-        mc.gameMode.piercingAttack(pw);
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        mc.gameMode.piercingAttack(mc.player.getMainHandItem().getAttackAnimation(), pw); // swings too since 26.3
         mc.player.resetAttackStrengthTicker();
         stage = 0;
         dashes++;

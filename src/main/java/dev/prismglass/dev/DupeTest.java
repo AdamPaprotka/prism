@@ -94,7 +94,7 @@ public final class DupeTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         BookBot book = Prism.modules().get(BookBot.class);
@@ -238,14 +238,14 @@ public final class DupeTest {
             hover.setEnabled(true);
         }
         if (t == 395) log("STORAGE before opening: " + (hover.knows(shulker) ? "contents known (singleplayer read) PASS" : "unknown FAIL"));
-        if (t == 395) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-storagehover-unknown.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (t == 395) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-storagehover-unknown.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (t == 400) {
             Vec3 hit = Vec3.atCenterOf(shulker).add(0, 0, -0.5);
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, Direction.NORTH, shulker, false));
         }
-        if (t == 412) log("STORAGE screen=" + (mc.screen == null ? "none" : mc.screen.getClass().getSimpleName()));
-        if (t == 415 && mc.screen != null) mc.player.closeContainer();
-        if (t == 425) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-storagehover.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (t == 412) log("STORAGE screen=" + (mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName()));
+        if (t == 415 && mc.gui.screen() != null) mc.player.closeContainer();
+        if (t == 425) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-storagehover.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         // ---- Staircase: 8 steps up east in the air (stone in the way to dig), then 8 steps down east off the top ----
         dev.prismglass.module.world.Staircase stairs = Prism.modules().get(dev.prismglass.module.world.Staircase.class);
         if (t == 435) {
@@ -298,7 +298,7 @@ public final class DupeTest {
             stairs.setEnabled(false);
             endAt = t + 10;
         }
-        if (endAt > 0 && t == endAt) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-staircase.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (endAt > 0 && t == endAt) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-staircase.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         // ---- SpamDupe: "give @s diamond {n}" stands in for a server's /dupe ----
         dev.prismglass.module.anarchy.SpamDupe spam = Prism.modules().get(dev.prismglass.module.anarchy.SpamDupe.class);
         if (endAt > 0 && t == endAt + 10) {
@@ -336,7 +336,7 @@ public final class DupeTest {
             mc.player.setXRot(10);
             mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT);
         }
-        if (endAt > 0 && t == endAt + 112) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-playerhat.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (endAt > 0 && t == endAt + 112) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-playerhat.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (endAt > 0 && t == endAt + 115) {
             Prism.modules().get(dev.prismglass.module.client.ClickGui.class).playerHat.set(false);
             mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON);

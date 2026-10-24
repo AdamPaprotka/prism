@@ -434,8 +434,8 @@ public final class BotPlayers {
                 x = abs.position().x; y = abs.position().y; z = abs.position().z;
                 yaw = abs.yRot(); pitch = abs.xRot();
                 hasPos = true;
-                c.send(new ServerboundAcceptTeleportationPacket(pos.id()));
-                c.send(new ServerboundMovePlayerPacket.PosRot(x, y, z, yaw, pitch, false, false));
+                // 26.3: the accept carries the resulting position (vanilla sends no extra PosRot any more)
+                c.send(new ServerboundAcceptTeleportationPacket(pos.id(), x, y, z, yaw, pitch));
             } else if (p instanceof ClientboundSetHealthPacket h) {
                 if (h.getHealth() <= 0 && diedAt == 0) diedAt = System.currentTimeMillis();
             }
@@ -459,7 +459,10 @@ public final class BotPlayers {
             var decorator = RegistryFriendlyByteBuf.decorator(registries);
             c.setupInboundProtocol(GameProtocols.CLIENTBOUND_TEMPLATE.bind(decorator), listener(ClientGamePacketListener.class));
             c.send(ServerboundFinishConfigurationPacket.INSTANCE);
-            c.setupOutboundProtocol(GameProtocols.SERVERBOUND_TEMPLATE.bind(decorator, () -> false));
+            c.setupOutboundProtocol(GameProtocols.SERVERBOUND_TEMPLATE.bind(decorator, new GameProtocols.Context() {
+                @Override public boolean hasInfiniteMaterials() { return false; }
+                @Override public boolean canUseCommandBlocks() { return false; }
+            }));
         }
     }
 

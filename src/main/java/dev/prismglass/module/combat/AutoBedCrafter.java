@@ -8,7 +8,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.inventory.CraftingMenu;
-import net.minecraft.world.item.BedItem;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
@@ -29,12 +28,12 @@ public class AutoBedCrafter extends Module {
 
     public AutoBedCrafter() { super("AutoBedCrafter", "Crafts beds from wool + planks when you run low (opens/places a table).", Category.COMBAT); }
 
-    @Override public void onDisable() { if (opened && mc.player != null && mc.screen != null) mc.player.closeContainer(); opened = crafting = false; }
+    @Override public void onDisable() { if (opened && mc.player != null && mc.gui.screen() != null) mc.player.closeContainer(); opened = crafting = false; }
 
     private int beds() {
         int n = 0;
         var inv = mc.player.getInventory();
-        for (int i = 0; i < inv.getContainerSize(); i++) if (inv.getItem(i).getItem() instanceof BedItem) n += inv.getItem(i).getCount();
+        for (int i = 0; i < inv.getContainerSize(); i++) if (inv.getItem(i).is(net.minecraft.tags.ItemTags.BEDS)) n += inv.getItem(i).getCount();
         return n;
     }
 
@@ -57,18 +56,18 @@ public class AutoBedCrafter extends Module {
         var grid = CraftUtil.grid();
         if (grid instanceof CraftingMenu) {
             if (!crafting && !opened) return; // the player opened it: leave them alone unless we're low
-            if (!grid.getResultSlot().getItem().isEmpty() && grid.getResultSlot().getItem().getItem() instanceof BedItem) {
+            if (!grid.getResultSlot().getItem().isEmpty() && grid.getResultSlot().getItem().is(net.minecraft.tags.ItemTags.BEDS)) {
                 CraftUtil.take(grid, grid.getResultSlot().index, false);
                 wait = 2;
                 return;
             }
-            var recipe = beds < target.getInt() ? CraftUtil.find(grid, s -> s.getItem() instanceof BedItem) : null;
+            var recipe = beds < target.getInt() ? CraftUtil.find(grid, s -> s.is(net.minecraft.tags.ItemTags.BEDS)) : null;
             if (recipe == null) { finish(); return; }
             CraftUtil.place(grid, recipe, target.getInt() - beds > 1);
             wait = 2;
             return;
         }
-        if (mc.screen != null) return;
+        if (mc.gui.screen() != null) return;
         crafting = opened = false;
         if (beds >= refill.getInt() || !haveMaterials() || !open.get()) return;
         if (onlySafe.get() && EntityUtil.closestEnemy(8) != null) return;
@@ -103,7 +102,7 @@ public class AutoBedCrafter extends Module {
         double bestD = Double.MAX_VALUE;
         for (BlockPos p : BlockPos.betweenClosed(mc.player.blockPosition().offset(-r, -r, -r), mc.player.blockPosition().offset(r, r + 1, r))) {
             if (!BlockUtil.state(p).is(Blocks.CRAFTING_TABLE) || !BlockUtil.inPlaceRange(p) || BlockUtil.breakFace(p) == null) continue;
-            double d = mc.player.getEyePosition().distanceToSqr(p.getCenter());
+            double d = mc.player.getEyePosition().distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(p));
             if (d < bestD) { bestD = d; best = p.immutable(); }
         }
         return best;

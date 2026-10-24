@@ -12,7 +12,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
-import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.MaceItem;
@@ -63,7 +62,7 @@ public final class CombatUtil {
             return false;
         }
         mc.gameMode.attack(mc.player, target);
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        SwingUtil.punch();
         attackTimer.reset();
         if (requireCooldown) Prism.humanizer().onHit();
         return true;
@@ -80,7 +79,7 @@ public final class CombatUtil {
     // ---- weapons -----------------------------------------------------------------------------
 
     public static boolean isWeapon(ItemStack s) {
-        return s.is(net.minecraft.tags.ItemTags.SWORDS) || s.getItem() instanceof AxeItem
+        return s.is(net.minecraft.tags.ItemTags.SWORDS) || s.is(net.minecraft.tags.ItemTags.AXES)
             || s.getItem() instanceof MaceItem || s.getItem() instanceof TridentItem;
     }
 
@@ -92,7 +91,7 @@ public final class CombatUtil {
             ItemStack s = mc.player.getInventory().getItem(i);
             if (!isWeapon(s)) continue;
             double score = attackDamage(s);
-            if (preferAxe && s.getItem() instanceof AxeItem) score += 100;
+            if (preferAxe && s.is(net.minecraft.tags.ItemTags.AXES)) score += 100;
             if (score > bestScore) { bestScore = score; best = i; }
         }
         return best;

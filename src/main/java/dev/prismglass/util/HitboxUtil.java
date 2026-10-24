@@ -34,7 +34,7 @@ public final class HitboxUtil {
     public static AABB serverBox(Entity e) {
         AABB drawn = e.getBoundingBox();
         Vec3 server;
-        if (e instanceof LivingEntity le) server = le.getInterpolation().position();
+        if (e instanceof LivingEntity le) server = EntityUtil.interpolationTarget(le);
         else server = e.getPositionCodec().getBase();
         if (server.distanceToSqr(e.position()) > 16) return drawn; // teleported: don't trust stale data
         AABB atServer = drawn.move(server.subtract(e.position()));

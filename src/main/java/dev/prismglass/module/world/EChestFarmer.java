@@ -37,7 +37,7 @@ public class EChestFarmer extends Module {
             Direction face = BlockUtil.breakFace(pos);
             if (face == null || !BlockUtil.readyToDig(pos, 30)) return;
             mc.gameMode.continueDestroyBlock(pos, face);
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.punch();
         } else if (BlockUtil.isReplaceable(pos)) {
             int chest = BlockUtil.findBlock(Blocks.ENDER_CHEST);
             if (chest == -1) { ChatUtil.error("EChestFarmer: out of ender chests"); toggle(); return; }

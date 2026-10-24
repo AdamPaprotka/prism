@@ -37,7 +37,7 @@ public class Flamethrower extends Module {
 
     @Override
     public void onTick() {
-        if (mc.screen != null) return;
+        if (mc.gui.screen() != null) return;
         int slot = InvUtil.findHotbar(s -> s.is(Items.FLINT_AND_STEEL) && (!antiBreak.get() || s.getMaxDamage() - s.getDamageValue() > 1));
         if (slot == -1 && fireCharges.get()) slot = InvUtil.findHotbar(Items.FIRE_CHARGE);
         if (slot == -1) return;

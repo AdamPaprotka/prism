@@ -40,7 +40,7 @@ public class AutoGap extends Module {
             return;
         }
         AutoEat eat = Prism.modules().get(AutoEat.class);
-        if ((eat != null && eat.isEating()) || p.isUsingItem() || mc.screen != null) return;
+        if ((eat != null && eat.isEating()) || p.isUsingItem() || mc.gui.screen() != null) return;
 
         boolean needEnchanted = false;
         reason = null;

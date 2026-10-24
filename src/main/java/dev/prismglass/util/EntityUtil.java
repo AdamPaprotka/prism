@@ -18,6 +18,15 @@ public final class EntityUtil {
 
     private EntityUtil() {}
 
+    /**
+     * Where the entity is interpolating to (its newest server position), or where it is when nothing is pending.
+     * 26.1.2 had {@code InterpolationHandler.position()}; 26.3 only exposes the pending {@code target()}.
+     */
+    public static Vec3 interpolationTarget(Entity e) {
+        var target = e.getInterpolation().target();
+        return target != null ? target.position() : e.position();
+    }
+
     public record TargetFilter(boolean players, boolean hostiles, boolean animals, boolean invisibles, boolean naked) {}
 
     public static boolean isValid(Entity e, TargetFilter f) {
@@ -117,8 +126,8 @@ public final class EntityUtil {
         Vec3 end = eye.add(RotationUtil.direction(Prism.rotations().getServerYaw(), Prism.rotations().getServerPitch()).scale(range + 1));
         Vec3 hit = box.clip(eye, end).orElse(box.getCenter());
         var result = mc.gameMode.interact(mc.player, e, new net.minecraft.world.phys.EntityHitResult(e, hit), net.minecraft.world.InteractionHand.MAIN_HAND);
-        if (result instanceof net.minecraft.world.InteractionResult.Success s && s.swingSource() == net.minecraft.world.InteractionResult.SwingSource.CLIENT) {
-            mc.player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+        if (result instanceof net.minecraft.world.InteractionResult.Success s && s.swingSource() == net.minecraft.world.InteractionResult.SwingSource.PREDICTED) {
+            SwingUtil.use(net.minecraft.world.InteractionHand.MAIN_HAND);
         }
         return true;
     }

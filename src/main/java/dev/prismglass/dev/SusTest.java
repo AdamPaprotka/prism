@@ -64,7 +64,7 @@ public final class SusTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         SusChunks sus = Prism.modules().get(SusChunks.class);
@@ -104,7 +104,7 @@ public final class SusTest {
             mc.player.setYRot(-45);
             mc.player.setXRot(10);
         }
-        if (t == 90) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-suschunks.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (t == 90) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-suschunks.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (t == 100) {
             sus.method.parse("Palette");
             sus.setEnabled(false);

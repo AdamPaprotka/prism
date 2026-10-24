@@ -1,5 +1,7 @@
 package dev.prismglass;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
 import dev.prismglass.command.CommandManager;
 import dev.prismglass.config.ConfigManager;
 import dev.prismglass.event.PacketEvent;
@@ -96,11 +98,11 @@ public class Prism implements ClientModInitializer {
             net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
                 var theme = modules.get(dev.prismglass.module.client.ClickGui.class);
                 int t = ++ticks[0];
-                if (t == 100) { theme.blocky.set(true); theme.style.parse(styles[0]); client.setScreen(new dev.prismglass.gui.ClickGuiScreen()); }
+                if (t == 100) { theme.blocky.set(true); theme.style.parse(styles[0]); client.gui.setScreen(new dev.prismglass.gui.ClickGuiScreen()); }
                 for (int i = 0; i < styles.length; i++) {
                     if (t == 100 + i * 50) theme.style.parse(styles[i]);
                     if (t == 140 + i * 50) net.minecraft.client.Screenshot.grab(client.gameDirectory, "prism-blocky-" + styles[i].toLowerCase() + ".png",
-                        client.getMainRenderTarget(), 1, msg -> LOG.info("[guiblocky] {}", msg.getString()));
+                        client.gameRenderer.mainRenderTarget(), 1, msg -> LOG.info("[guiblocky] {}", msg.getString()));
                 }
                 if (t == 100 + styles.length * 50) {
                     theme.blocky.set(false);
@@ -115,12 +117,12 @@ public class Prism implements ClientModInitializer {
             int[] ticks = {0};
             net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
                 ticks[0]++;
-                if (ticks[0] == 120) client.setScreen(new dev.prismglass.gui.ClickGuiScreen());
+                if (ticks[0] == 120) client.gui.setScreen(new dev.prismglass.gui.ClickGuiScreen());
                 if (ticks[0] == 180) {
                     net.minecraft.client.Screenshot.grab(client.gameDirectory, "prism-guitest.png",
-                        client.getMainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
+                        client.gameRenderer.mainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
                 }
-                if (client.screen instanceof dev.prismglass.gui.ClickGuiScreen gui) {
+                if (client.gui.screen() instanceof dev.prismglass.gui.ClickGuiScreen gui) {
                     // right-click a slider -> type a number (Enter applies, clamped, not step-snapped; Esc cancels)
                     if (ticks[0] == 150) {
                         // the first module shown in a panel that has a slider
@@ -136,17 +138,17 @@ public class Prism implements ClientModInitializer {
                     java.util.function.BiConsumer<float[], Integer> press = (r, b) -> gui.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(
                         r[0] + r[2] * 0.5, r[1] + r[3] * 0.5, new net.minecraft.client.input.MouseButtonInfo(b, 0)), false);
                     java.util.function.Consumer<String> type = str -> { for (char c : str.toCharArray()) gui.charTyped(new net.minecraft.client.input.CharacterEvent(c)); };
-                    if (ticks[0] == 150 && theme != null) { float[] r = gui.debugRect(theme); if (r != null) press.accept(r, 1); } // expand its settings
+                    if (ticks[0] == 150 && theme != null) { float[] r = gui.debugRect(theme); if (r != null) press.accept(r, dev.prismglass.util.KeyUtil.MOUSE_RIGHT); } // expand its settings
                     if (ticks[0] == 156 && ns != null) {
                         float[] r = gui.debugRect(ns);
                         if (r == null) LOG.info("[guitest] FAIL slider AnimSpeed not visible");
                         else {
-                            press.accept(r, 1);
+                            press.accept(r, dev.prismglass.util.KeyUtil.MOUSE_RIGHT);
                             String shown = gui.debugNumInput();
                             double target = ns.getMin() + (ns.getMax() - ns.getMin()) * 0.37 + ns.getStep() * 0.31; // off the step grid
                             String typed = String.format(java.util.Locale.ROOT, "%.3f", target).replace('.', ',');
                             type.accept(typed);
-                            gui.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0));
+                            gui.keyPressed(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
                             double want = Double.parseDouble(typed.replace(',', '.'));
                             LOG.info("[guitest] {} right-click opens the number box (showed '{}'), typed {} -> {} (display {})",
                                 shown != null && Math.abs(ns.get() - want) < 1e-9 ? "PASS" : "FAIL", shown, typed, ns.get(), ns.display());
@@ -154,27 +156,27 @@ public class Prism implements ClientModInitializer {
                     }
                     if (ticks[0] == 157 && ns != null) { gui.debugTypeNumber(ns); type.accept("12,5"); }
                     if (ticks[0] == 159 && ns != null)
-                        net.minecraft.client.Screenshot.grab(client.gameDirectory, "prism-guitest-number.png", client.getMainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
+                        net.minecraft.client.Screenshot.grab(client.gameDirectory, "prism-guitest-number.png", client.gameRenderer.mainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
                     if (ticks[0] == 160 && ns != null) {
                         gui.debugTypeNumber(ns);
                         type.accept("99");
-                        gui.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0));
+                        gui.keyPressed(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
                         LOG.info("[guitest] {} 99 clamps to the max -> {}", ns.get() == ns.getMax() ? "PASS" : "FAIL", ns.get());
                         double before = ns.get();
                         gui.debugTypeNumber(ns);
                         type.accept("1");
-                        gui.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0));
-                        LOG.info("[guitest] {} Esc cancels (still {}), GUI still open: {}", ns.get() == before && client.screen == gui ? "PASS" : "FAIL", ns.get(), client.screen == gui);
+                        gui.keyPressed(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
+                        LOG.info("[guitest] {} Esc cancels (still {}), GUI still open: {}", ns.get() == before && client.gui.screen() == gui ? "PASS" : "FAIL", ns.get(), client.gui.screen() == gui);
                         float[] r = gui.debugRect(ns);
-                        if (r != null) { press.accept(r, 2); LOG.info("[guitest] {} middle-click resets -> {}", ns.get().equals(ns.getDefault()) ? "PASS" : "FAIL", ns.get()); }
+                        if (r != null) { press.accept(r, dev.prismglass.util.KeyUtil.MOUSE_MIDDLE); LOG.info("[guitest] {} middle-click resets -> {}", ns.get().equals(ns.getDefault()) ? "PASS" : "FAIL", ns.get()); }
                         ns.reset();
                         float[] m = gui.debugRect(theme);
-                        if (m != null) press.accept(m, 1); // collapse again for the screenshots
+                        if (m != null) press.accept(m, dev.prismglass.util.KeyUtil.MOUSE_RIGHT); // collapse again for the screenshots
                     }
                     if (ticks[0] == 170) {
                         // a bind pressed in the GUI toggles its module and must not type into the search
                         var m = modules.get(dev.prismglass.module.render.Fullbright.class);
-                        int k = org.lwjgl.glfw.GLFW.GLFW_KEY_K;
+                        int k = InputConstants.KEY_K;
                         m.bind.set(k);
                         boolean before = m.isEnabled();
                         gui.keyPressed(new net.minecraft.client.input.KeyEvent(k, 0, 0));
@@ -189,15 +191,15 @@ public class Prism implements ClientModInitializer {
                 }
                 if (ticks[0] == 230 || ticks[0] == 290) {
                     net.minecraft.client.Screenshot.grab(client.gameDirectory, ticks[0] == 230 ? "prism-guitest-config.png" : "prism-guitest-profiles.png",
-                        client.getMainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
+                        client.gameRenderer.mainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
                 }
-                if (client.screen instanceof dev.prismglass.gui.ClickGuiScreen gui) {
+                if (client.gui.screen() instanceof dev.prismglass.gui.ClickGuiScreen gui) {
                     if (ticks[0] == 295) { gui.debugMenu(0); var x = modules.get(dev.prismglass.module.render.Xray.class); gui.debugList(x, x.blocks, "dia"); }
                     if (ticks[0] == 345) { var im = modules.get(dev.prismglass.module.player.InventoryManager.class); gui.debugList(im, im.layout, ""); }
                 }
                 if (ticks[0] == 335 || ticks[0] == 385) {
                     net.minecraft.client.Screenshot.grab(client.gameDirectory, ticks[0] == 335 ? "prism-guitest-list.png" : "prism-guitest-layout.png",
-                        client.getMainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
+                        client.gameRenderer.mainRenderTarget(), 1, msg -> LOG.info("[guitest] {}", msg.getString()));
                 }
                 if (ticks[0] == 400) { LOG.info("[guitest] done"); Runtime.getRuntime().halt(0); }
             });
@@ -257,7 +259,7 @@ public class Prism implements ClientModInitializer {
      */
     public static void renderHud(net.minecraft.client.gui.GuiGraphicsExtractor ctx, float delta) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.options.hideGui || modules == null || mc.screen instanceof dev.prismglass.gui.NowPlayingScreen) return; // leaving/respawning: no world for a frame
+        if (mc.player == null || mc.level == null || mc.gui.hud.isHidden() || modules == null || mc.gui.screen() instanceof dev.prismglass.gui.NowPlayingScreen) return; // leaving/respawning: no world for a frame
         ctx.nextStratum();
         dev.prismglass.streamproof.Overlay.markGui();
         modules.onRender2D(ctx, delta);

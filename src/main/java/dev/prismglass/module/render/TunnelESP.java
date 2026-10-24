@@ -102,12 +102,12 @@ public class TunnelESP extends Module {
 
     /** Two air blocks with a floor under and a ceiling over. */
     private boolean cell(LevelChunk c, int x, int y, int z) {
-        return state(c, x, y, z).isAir() && state(c, x, y + 1, z).isAir() && state(c, x, y - 1, z).blocksMotion() && state(c, x, y + 2, z).blocksMotion();
+        return state(c, x, y, z).isAir() && state(c, x, y + 1, z).isAir() && dev.prismglass.util.BlockUtil.blocksMotion(state(c, x, y - 1, z)) && dev.prismglass.util.BlockUtil.blocksMotion(state(c, x, y + 2, z));
     }
 
     /** Both blocks beside the passage are solid (neighbouring chunks are read through the level). */
     private boolean wall(LevelChunk c, int x, int y, int z) {
-        return state(c, x, y, z).blocksMotion() && state(c, x, y + 1, z).blocksMotion();
+        return dev.prismglass.util.BlockUtil.blocksMotion(state(c, x, y, z)) && dev.prismglass.util.BlockUtil.blocksMotion(state(c, x, y + 1, z));
     }
 
     private net.minecraft.world.level.block.state.BlockState state(LevelChunk c, int x, int y, int z) {

@@ -11,6 +11,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelSettings;
@@ -101,7 +102,7 @@ public final class ElytraTest {
             List<String> items = server.submit(() -> {
                 var level = server.getLevel(Level.END);
                 List<String> out = new ArrayList<>();
-                for (var f : level.getEntities(EntityType.ITEM_FRAME, new AABB(target).inflate(1.5), e -> true)) {
+                for (var f : level.getEntities(EntityTypes.ITEM_FRAME, new AABB(target).inflate(1.5), e -> true)) {
                     out.add(f.blockPosition() + "=" + f.getItem().getItem());
                 }
                 return out;
@@ -114,7 +115,7 @@ public final class ElytraTest {
         }
         if (t == 500) {
             log("module: " + Prism.modules().get(ElytraFinder.class).getInfo());
-            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-elytra.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-elytra.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         }
         if (t == 520) {
             log("done");

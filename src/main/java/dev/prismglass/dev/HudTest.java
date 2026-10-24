@@ -28,7 +28,7 @@ public final class HudTest {
     private static void log(String s) { Prism.LOG.info("[hudtest] {}", s); }
 
     private static void shot(String name) {
-        Screenshot.grab(mc.gameDirectory, name, mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        Screenshot.grab(mc.gameDirectory, name, mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
     }
 
     private static void tick() {
@@ -42,7 +42,7 @@ public final class HudTest {
                 lookup -> lookup.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
-        if (mc.player == null || mc.level == null || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+        if (mc.player == null || mc.level == null || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         Hud hud = Prism.modules().get(Hud.class);
         if (t == 40) {
@@ -54,10 +54,10 @@ public final class HudTest {
                 dev.prismglass.module.movement.NoSlow.class, dev.prismglass.module.render.Fullbright.class)) {
                 Prism.modules().get(c).setEnabled(true);
             }
-            if (mc.screen != null) mc.setScreen(null);
+            if (mc.gui.screen() != null) mc.gui.setScreen(null);
         }
         if (t == 80) shot("prism-hud-brackets.png");
-        if (t == 90) mc.setScreen(new HudEditorScreen(null));
+        if (t == 90) mc.gui.setScreen(new HudEditorScreen(null));
         if (t == 110) {
             var b = hud.bounds();
             log("editor elements: " + b.keySet());
@@ -70,19 +70,19 @@ public final class HudTest {
             log("layout: " + hud.layout.get());
         }
         if (t == 140) shot("prism-hud-editor.png");
-        if (t == 150) mc.setScreen(null);
+        if (t == 150) mc.gui.setScreen(null);
         if (t == 180) {
             shot("prism-hud-moved.png");
             var b = hud.bounds();
             log(String.format("watermark at %.0f,%.0f  list at %.0f,%.0f  info at %.0f,%.0f", b.get("Watermark")[0], b.get("Watermark")[1],
                 b.get("ArrayList")[0], b.get("ArrayList")[1], b.get("Info")[0], b.get("Info")[1]));
         }
-        if (t == 182) mc.setScreen(new dev.prismglass.gui.AboutScreen(null));
+        if (t == 182) mc.gui.setScreen(new dev.prismglass.gui.AboutScreen(null));
         if (t == 197) shot("prism-about.png");
-        if (t == 200) mc.setScreen(new dev.prismglass.gui.ChangelogScreen(null));
+        if (t == 200) mc.gui.setScreen(new dev.prismglass.gui.ChangelogScreen(null));
         if (t == 215) shot("prism-changelog.png");
         if (t == 222) {
-            mc.setScreen(null);
+            mc.gui.setScreen(null);
             mc.getSingleplayerServer().execute(() -> mc.getSingleplayerServer().getCommands().performPrefixedCommand(
                 mc.getSingleplayerServer().createCommandSourceStack(), "item replace entity @p weapon.mainhand with diamond_sword"));
             var wp = Prism.modules().get(dev.prismglass.module.render.Waypoints.class);
@@ -92,12 +92,12 @@ public final class HudTest {
         if (t == 232) Prism.modules().get(dev.prismglass.module.client.KeyActions.class).actions().get(0).run().run(); // Inspect
         if (t == 238) shot("prism-inspect-1.png");
         if (t == 250) shot("prism-inspect-2.png");
-        if (t == 262) { mc.setScreen(new dev.prismglass.gui.ClickGuiScreen()); }
-        if (t == 266 && mc.screen instanceof dev.prismglass.gui.ClickGuiScreen g) g.debugMenu(3);
+        if (t == 262) { mc.gui.setScreen(new dev.prismglass.gui.ClickGuiScreen()); }
+        if (t == 266 && mc.gui.screen() instanceof dev.prismglass.gui.ClickGuiScreen g) g.debugMenu(3);
         if (t == 280) shot("prism-keybinds.png");
         if (t == 284) {
             // KillAura KB displacement guide on a tanky pig 3 blocks ahead
-            mc.setScreen(null);
+            mc.gui.setScreen(null);
             mc.player.setYRot(0);
             mc.player.setXRot(40);
             mc.getConnection().sendCommand("summon pig ~ ~ ~3 {NoAI:1b,Health:1000f,attributes:[{id:\"minecraft:max_health\",base:1000}]}");
@@ -111,14 +111,14 @@ public final class HudTest {
         if (t == 324) {
             var ka = Prism.modules().get(dev.prismglass.module.combat.KillAura.class);
             ka.setEnabled(false); ka.kbDisplace.set(false); ka.animals.set(false); ka.players.set(true);
-            mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.SONG, dev.prismglass.module.client.Hud.npCover));
+            mc.gui.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.SONG, dev.prismglass.module.client.Hud.npCover));
         }
         if (t == 325) shot("prism-np-opening.png"); // mid-animation: growing out of the cover
         if (t == 336) shot("prism-np-song.png");
-        if (t == 340) mc.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.LYRICS, dev.prismglass.module.client.Hud.npText));
+        if (t == 340) mc.gui.setScreen(new dev.prismglass.gui.NowPlayingScreen(dev.prismglass.gui.NowPlayingScreen.Page.LYRICS, dev.prismglass.module.client.Hud.npText));
         if (t == 360) shot("prism-np-lyrics.png");
         if (t == 370) {
-            mc.setScreen(null);
+            mc.gui.setScreen(null);
             Prism.modules().get(dev.prismglass.module.render.Waypoints.class).remove("Base");
             hud.layout.set(oldLayout);
             hud.listFormat.parse(oldFormat);

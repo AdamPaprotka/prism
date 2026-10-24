@@ -58,7 +58,7 @@ public final class RebreakTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         PacketMine pm = Prism.modules().get(PacketMine.class);

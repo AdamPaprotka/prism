@@ -38,7 +38,7 @@ public class AirPlace extends Module {
             if (mode.is("Vanilla")) {
                 if (BlockUtil.isReplaceable(bp)) {
                     mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(Vec3.atCenterOf(bp), Direction.UP, bp, false));
-                    mc.player.swing(InteractionHand.MAIN_HAND);
+                    dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
                 }
             } else if (BlockUtil.canPlace(bp) && BlockUtil.getPlaceSide(bp) != null) {
                 pending = bp;

@@ -55,7 +55,7 @@ public class AutoAnvil extends Module {
         BlockPos feet = target.blockPosition();
 
         if (placeButton.get() && BlockUtil.isReplaceable(feet) && !BlockUtil.state(feet).is(BlockTags.BUTTONS)) {
-            int button = InvUtil.findHotbar(s -> s.is(ItemTags.BUTTONS));
+            int button = InvUtil.findHotbar(s -> s.is(net.minecraft.tags.BlockItemTags.BUTTONS.item()));
             // the button sits on their floor block; standing in it doesn't stop it being placed (no collision box)
             if (button != -1 && BlockUtil.click(feet.below(), net.minecraft.core.Direction.UP, button, true, 85) != BlockUtil.Result.FAILED) return;
         }

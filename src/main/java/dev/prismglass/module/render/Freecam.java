@@ -22,7 +22,7 @@ public class Freecam extends Module {
 
     @Override
     public void onEnable() {
-        pos = prevPos = mc.gameRenderer.getMainCamera().position();
+        pos = prevPos = mc.gameRenderer.mainCamera().position();
         yaw = mc.player.getYRot();
         pitch = mc.player.getXRot();
         if (forceRender.get()) {
@@ -31,14 +31,14 @@ public class Freecam extends Module {
             savedCull = mc.smartCull;
             mc.smartCull = false;
             cullChanged = true;
-            if (mc.levelRenderer != null) mc.levelRenderer.needsUpdate();
+            if (mc.levelRenderer != null) mc.levelRenderer.sectionOcclusionGraph().invalidate();
         }
     }
 
     @Override
     public void onDisable() {
         if (cullChanged) { mc.smartCull = savedCull; cullChanged = false; }
-        if (mc.levelRenderer != null) mc.levelRenderer.needsUpdate();
+        if (mc.levelRenderer != null) mc.levelRenderer.sectionOcclusionGraph().invalidate();
     }
 
     /** Called once per tick with the raw keyboard input (before it is zeroed for the player). */

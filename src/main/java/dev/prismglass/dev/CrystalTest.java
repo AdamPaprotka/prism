@@ -57,7 +57,7 @@ public final class CrystalTest {
             mc.options.pauseOnLostFocus = false;
             String name = "prismcrystal-" + System.currentTimeMillis();
             LevelSettings info = new LevelSettings(name, GameType.SURVIVAL, new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false), true, WorldDataConfiguration.DEFAULT);
-            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), WorldPresets::createFlatWorldDimensions, null);
+            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), r -> r.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null) return;
@@ -108,7 +108,7 @@ public final class CrystalTest {
         }
         int liveStart = 60 + SPOTS.length * 30 + 20;
         if (t == liveStart) {
-            if (mc.screen != null) mc.setScreen(null);
+            if (mc.gui.screen() != null) mc.gui.setScreen(null);
             log(String.format("zombie %.1f blocks away", mc.player.distanceTo(zombie)));
             hpZombie = serverHp(s, zombie.getUUID());
             CrystalAura ca = Prism.modules().get(CrystalAura.class);
@@ -117,7 +117,7 @@ public final class CrystalTest {
             ca.minDamage.set(4.0);
             ca.setEnabled(true);
         }
-        if (t == liveStart + 10 || t == liveStart + 40) log("ca: " + Prism.modules().get(CrystalAura.class).debugState() + " paused=" + mc.isPaused() + " screen=" + mc.screen);
+        if (t == liveStart + 10 || t == liveStart + 40) log("ca: " + Prism.modules().get(CrystalAura.class).debugState() + " paused=" + mc.isPaused() + " screen=" + mc.gui.screen());
         if (t > liveStart && t <= liveStart + 200) {
             for (var e : mc.level.entitiesForRendering()) if (e instanceof EndCrystal c && c.tickCount == 1) placed++;
         }

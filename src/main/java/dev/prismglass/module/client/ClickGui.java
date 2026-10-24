@@ -8,7 +8,7 @@ import dev.prismglass.setting.BoolSetting;
 import dev.prismglass.setting.ColorSetting;
 import dev.prismglass.setting.ModeSetting;
 import dev.prismglass.setting.NumberSetting;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 /** Theme + opener for the ClickGUI. Every visual of the GUI and HUD is driven from here. */
 public class ClickGui extends Module {
@@ -63,7 +63,7 @@ public class ClickGui extends Module {
 
     public ClickGui() {
         super("ClickGui", "Opens the module interface.", Category.CLIENT);
-        bind.set(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        bind.set(InputConstants.KEY_RSHIFT);
         drawn.set(false);
     }
 
@@ -71,7 +71,7 @@ public class ClickGui extends Module {
     public void onEnable() {
         // Open on the next frame: opening right now would let the same key press reach the screen
         // (and close it), and the chat screen closes itself after running a ".t clickgui" command.
-        mc.schedule(() -> mc.setScreen(new ClickGuiScreen()));
+        mc.schedule(() -> mc.gui.setScreen(new ClickGuiScreen()));
         setEnabledSilently(false);
     }
 

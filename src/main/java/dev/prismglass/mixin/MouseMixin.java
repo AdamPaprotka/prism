@@ -5,7 +5,6 @@ import dev.prismglass.util.KeyUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
 import net.minecraft.client.input.MouseButtonInfo;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -15,32 +14,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MouseMixin {
     @Inject(method = "onButton", at = @At("HEAD"))
     private void prism$onMouse(long window, MouseButtonInfo info, int action, CallbackInfo ci) {
-        int button = info.button();
+        int button = info.button(); // SDL: 1 left, 2 middle, 3 right, 4+ side
         Minecraft mc = Minecraft.getInstance();
-        if (window != mc.getWindow().handle() || mc.screen != null || mc.player == null) return;
-        // left/right click stay vanilla; buttons 3+ (middle, side buttons) are bindable
-        if (button < 2) return;
-        if (action == GLFW.GLFW_PRESS) Prism.modules().onKey(KeyUtil.MOUSE_OFFSET + button, true);
-        else if (action == GLFW.GLFW_RELEASE) Prism.modules().onKey(KeyUtil.MOUSE_OFFSET + button, false);
+        if (window != mc.getWindow().handle() || mc.gui.screen() != null || mc.player == null) return;
+        // left/right click stay vanilla; middle and side buttons are bindable
+        if (!KeyUtil.isBindableMouse(button)) return;
+        if (action == KeyUtil.PRESS) Prism.modules().onKey(KeyUtil.mouse(button), true);
+        else if (action == KeyUtil.RELEASE) Prism.modules().onKey(KeyUtil.mouse(button), false);
     }
 
-    @org.spongepowered.asm.mixin.Unique private double prism$lastX, prism$lastY;
-    @org.spongepowered.asm.mixin.Unique private boolean prism$hasLast;
-
-    /** Hologram pop-out: a locked mouse steers your head, so the crosshair can sweep the floating panel. */
+    /**
+     * Hologram pop-out: a locked mouse steers your head, so the crosshair can sweep the floating panel.
+     * SDL hands us the relative motion directly (relative mode keeps the absolute position still).
+     */
     @Inject(method = "onMove", at = @At("HEAD"), cancellable = true)
-    private void prism$onMove(long window, double x, double y, CallbackInfo ci) {
+    private void prism$onMove(long window, double x, double y, double dx, double dy, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();
-        if (window != mc.getWindow().handle() || mc.player == null || !dev.prismglass.gui.render.Holo.steering()) {
-            prism$hasLast = false;
-            return;
-        }
-        if (!prism$hasLast) { prism$lastX = x; prism$lastY = y; prism$hasLast = true; ci.cancel(); return; }
-        double dx = x - prism$lastX, dy = y - prism$lastY;
-        prism$lastX = x; prism$lastY = y;
+        if (window != mc.getWindow().handle() || mc.player == null || !dev.prismglass.gui.render.Holo.steering()) return;
         double sens = mc.options.sensitivity().get() * 0.6 + 0.2;
         double f = sens * sens * sens * 8.0; // vanilla turnPlayer's curve
-        mc.player.turn(dx * f * (mc.options.invertMouseX().get() ? -1 : 1), dy * f * (mc.options.invertMouseY().get() ? -1 : 1));
+        if (dx != 0 || dy != 0)
+            mc.player.turn(dx * f * (mc.options.invertMouseX().get() ? -1 : 1), dy * f * (mc.options.invertMouseY().get() ? -1 : 1));
         ci.cancel();
     }
 }

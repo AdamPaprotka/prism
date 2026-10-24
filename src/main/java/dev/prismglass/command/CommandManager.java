@@ -210,11 +210,11 @@ public final class CommandManager {
             Prism.modules().get(dev.prismglass.module.render.PearlPredict.class).spawnTestPearl(dist);
         }, "pt"));
         add(new Command("about", "about", "Version, release channel and build/debug info.", a ->
-            mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.AboutScreen(null))), "version"));
+            mc.schedule(() -> mc.gui.setScreen(new dev.prismglass.gui.AboutScreen(null))), "version"));
         add(new Command("changelog", "changelog", "Show what's new in Prism.", a ->
-            mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.ChangelogScreen(null)))));
+            mc.schedule(() -> mc.gui.setScreen(new dev.prismglass.gui.ChangelogScreen(null)))));
         add(new Command("hud", "hud", "Open the HUD editor (drag elements with the mouse).", a ->
-            mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.HudEditorScreen(null)))));
+            mc.schedule(() -> mc.gui.setScreen(new dev.prismglass.gui.HudEditorScreen(null)))));
         add(new Command("elytrabot", "elytrabot <x> <z> | stop", "Fly with elytra to coordinates.", a -> {
             var bot = Prism.modules().get(dev.prismglass.module.movement.ElytraBot.class);
             if (arg(a, 0).equalsIgnoreCase("stop")) { bot.setEnabled(false); ChatUtil.good("ElytraBot stopped"); return; }
@@ -319,7 +319,7 @@ public final class CommandManager {
         }));
         add(new Command("account", "account [add|del|login|original|random|list] [name]", "Cracked accounts; no argument opens the Accounts screen.", a -> {
             var am = Prism.accounts();
-            if (a.length == 0) { mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.AccountsScreen(null))); return; }
+            if (a.length == 0) { mc.schedule(() -> mc.gui.setScreen(new dev.prismglass.gui.AccountsScreen(null))); return; }
             switch (a[0].toLowerCase()) {
                 case "add" -> ChatUtil.info(am.add(arg(a, 1)) ? "Added " + a[1] : "Invalid name or already saved");
                 case "del", "remove" -> ChatUtil.info(am.remove(arg(a, 1)) ? "Removed " + a[1] : "No account " + a[1]);
@@ -342,7 +342,7 @@ public final class CommandManager {
         add(new Command("proxy", "proxy [list|add <name> <host:port> [socks5|socks4|http] [user pass]|del <name>|use <name>|off|tor [start|stop|new]|ip|account <account> <proxy|none>]",
             "Proxies for the server connection; no argument opens the Proxies screen. Tor starts tor.exe for you.", a -> {
             var pm = Prism.proxies();
-            if (a.length == 0) { mc.schedule(() -> mc.setScreen(new dev.prismglass.gui.ProxiesScreen(null))); return; }
+            if (a.length == 0) { mc.schedule(() -> mc.gui.setScreen(new dev.prismglass.gui.ProxiesScreen(null))); return; }
             switch (a[0].toLowerCase()) {
                 case "add" -> {
                     pm.put(dev.prismglass.manager.ProxyManager.parse(arg(a, 1), arg(a, 2), a.length > 3 ? a[3] : null, a.length > 4 ? a[4] : null, a.length > 5 ? a[5] : null));

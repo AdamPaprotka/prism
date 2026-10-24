@@ -192,7 +192,7 @@ public class HighwayBuilder extends Module {
             if (tool != -1 && tool != p.getInventory().getSelectedSlot() && Prism.guard().canSwitchSlot()) InvUtil.swap(tool, false);
         }
         if (!BlockUtil.readyToDig(pos, 55)) return; // rotation must be on the block first (Grim RotationBreak)
-        if (mc.gameMode.continueDestroyBlock(pos, digFace)) p.swing(InteractionHand.MAIN_HAND);
+        if (mc.gameMode.continueDestroyBlock(pos, digFace)) dev.prismglass.util.SwingUtil.punch();
         if (BlockUtil.isReplaceable(pos)) { mined++; digging = null; }
     }
 

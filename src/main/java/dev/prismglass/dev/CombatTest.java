@@ -5,7 +5,7 @@ import dev.prismglass.module.combat.KillAura;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
@@ -48,7 +48,7 @@ public final class CombatTest {
             attackTicks.add(inWorldTicks);
             if (!mc.player.onGround() && mc.player.getDeltaMovement().y < 0) crits++;
         }
-        if (packet instanceof ServerboundSwingPacket) swingTicks.add(inWorldTicks);
+        if (packet instanceof ServerboundPunchPacket) swingTicks.add(inWorldTicks);
     }
 
     private static void log(String s) { Prism.LOG.info("[combattest] {}", s); }
@@ -61,7 +61,7 @@ public final class CombatTest {
             LevelSettings info = new LevelSettings(name, GameType.SURVIVAL, new LevelSettings.DifficultySettings(Difficulty.EASY, false, false), true, WorldDataConfiguration.DEFAULT);
             log("creating world " + name);
             mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(),
-                WorldPresets::createFlatWorldDimensions, null);
+                r -> r.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null) return;
@@ -101,19 +101,19 @@ public final class CombatTest {
                 Prism.rotations().isActive(), attackTicks.size()));
         }
         // layering check: Prism HUD must draw over an open vanilla screen
-        if (inWorldTicks == 400) mc.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player));
+        if (inWorldTicks == 400) mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player));
         if (inWorldTicks == 420) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-hudtop.png",
-            mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+            mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         if (inWorldTicks == 430) {
             // list editor icons need a loaded world on 26.1 (item components), so check them here
             var gui = new dev.prismglass.gui.ClickGuiScreen();
-            mc.setScreen(gui);
+            mc.gui.setScreen(gui);
             var x = Prism.modules().get(dev.prismglass.module.render.Xray.class);
             gui.debugList(x, x.blocks, "gold");
         }
         if (inWorldTicks == 445) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-listicons.png",
-            mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
-        if (inWorldTicks == 455) mc.setScreen(null);
+            mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (inWorldTicks == 455) mc.gui.setScreen(null);
         if (inWorldTicks == 460) {
             summarize();
             Runtime.getRuntime().halt(0);

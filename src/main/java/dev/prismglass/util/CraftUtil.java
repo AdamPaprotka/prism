@@ -24,7 +24,7 @@ public final class CraftUtil {
 
     /** The open crafting grid (crafting table, or your own 2x2 while the inventory is open), or null. */
     public static AbstractCraftingMenu grid() {
-        return mc.screen != null && mc.player.containerMenu instanceof AbstractCraftingMenu m ? m : null;
+        return mc.gui.screen() != null && mc.player.containerMenu instanceof AbstractCraftingMenu m ? m : null;
     }
 
     /** A known recipe whose result matches, that fits the grid and that your inventory can make right now. */

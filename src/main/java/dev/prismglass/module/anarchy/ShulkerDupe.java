@@ -36,8 +36,8 @@ public class ShulkerDupe extends Module {
     @Override
     public void onPacketSend(PacketEvent e) {
         if (e.packet instanceof ServerboundUseItemOnPacket p
-            && BlockUtil.state(p.getHitResult().getBlockPos()).getBlock() instanceof ShulkerBoxBlock) {
-            box = p.getHitResult().getBlockPos();
+            && BlockUtil.state(p.hitResult().getBlockPos()).getBlock() instanceof ShulkerBoxBlock) {
+            box = p.hitResult().getBlockPos();
         }
     }
 
@@ -47,7 +47,7 @@ public class ShulkerDupe extends Module {
         if (!(BlockUtil.state(box).getBlock() instanceof ShulkerBoxBlock)) { box = null; return; }
         Direction face = BlockUtil.breakFace(box);
         mc.gameMode.continueDestroyBlock(box, face == null ? Direction.UP : face);
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.punch();
         if (!BlockUtil.state(box).isAir()) return;
 
         // the break packet just went out: take everything in the same tick

@@ -33,7 +33,7 @@ public class AutoMend extends Module {
     public void onTick() {
         if (restore != -1) { InvUtil.restore(restore); restore = -1; }
         if (clickCooldown > 0) clickCooldown--;
-        if (mc.screen != null || (pauseInCombat.get() && EntityUtil.closestEnemy(8) != null)) return;
+        if (mc.gui.screen() != null || (pauseInCombat.get() && EntityUtil.closestEnemy(8) != null)) return;
 
         if (tools.get() && !offhandTaken() && clickCooldown == 0) {
             ItemStack off = mc.player.getOffhandItem();

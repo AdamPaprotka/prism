@@ -56,12 +56,12 @@ public class ItemFrameDupe extends Module {
         if (inFrame.isEmpty()) {
             CombatUtil.face(frame, 40);
             mc.gameMode.interact(mc.player, frame, new EntityHitResult(frame), InteractionHand.MAIN_HAND);
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
             turns = 0;
         } else if (inFrame.is(item) && turns < rotations.getInt()) {
             CombatUtil.face(frame, 40);
             mc.gameMode.interact(mc.player, frame, new EntityHitResult(frame), InteractionHand.MAIN_HAND);
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
             turns++;
         } else {
             CombatUtil.face(frame, 40);

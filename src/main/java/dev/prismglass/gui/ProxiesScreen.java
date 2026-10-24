@@ -15,7 +15,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 /**
  * Proxies ({@code .proxy} or the Accounts screen): pick the proxy the next server connection goes through, run Tor
@@ -192,13 +192,12 @@ public class ProxiesScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
-        if (key == GLFW.GLFW_KEY_ESCAPE) { onClose(); return true; }
+        if (key == InputConstants.KEY_ESCAPE) { onClose(); return true; }
         if (!inputFocused) return super.keyPressed(event);
         switch (key) {
-            case GLFW.GLFW_KEY_BACKSPACE -> { if (!input.isEmpty()) input = input.substring(0, input.length() - 1); }
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> add();
-            case GLFW.GLFW_KEY_V -> { if ((event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) input += minecraft.keyboardHandler.getClipboard().trim(); }
-            default -> {}
+            case InputConstants.KEY_BACKSPACE -> { if (!input.isEmpty()) input = input.substring(0, input.length() - 1); }
+            case InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> add();
+            default -> { if (event.isPaste()) input += minecraft.keyboardHandler.getClipboard().trim(); }
         }
         return true;
     }
@@ -211,5 +210,5 @@ public class ProxiesScreen extends Screen {
         return true;
     }
 
-    @Override public void onClose() { minecraft.setScreen(parent); }
+    @Override public void onClose() { minecraft.gui.setScreen(parent); }
 }

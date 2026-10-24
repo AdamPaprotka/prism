@@ -11,14 +11,14 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Items;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 /**
  * Keybinds for things that aren't modules (ClickGUI top bar → Keybinds): Inspect, QuickPearl, coords, waypoints...
  * Lives as an always-on hidden module so the binds save with the profile.
  */
 public class KeyActions extends Module {
-    public final KeySetting inspect = key("Inspect", GLFW.GLFW_KEY_I, "CS:GO-style inspect animation of the item in your hand.");
+    public final KeySetting inspect = key("Inspect", InputConstants.KEY_I, "CS:GO-style inspect animation of the item in your hand.");
     public final KeySetting quickPearl = key("QuickPearl", KeyUtil.NONE, "Throw an ender pearl from your hotbar without switching to it.");
     public final KeySetting markWaypoint = key("MarkWaypoint", KeyUtil.NONE, "Drop a waypoint where you stand.");
     public final KeySetting copyCoords = key("CopyCoords", KeyUtil.NONE, "Copy your coordinates.");
@@ -49,7 +49,7 @@ public class KeyActions extends Module {
             mc.keyboardHandler.setClipboard(mc.player.getBlockX() + " " + mc.player.getBlockY() + " " + mc.player.getBlockZ());
             ChatUtil.good("Coordinates copied");
         }));
-        actions.add(new Action("HUD Editor", "Open the HUD editor", hudEditor, () -> mc.setScreen(new dev.prismglass.gui.HudEditorScreen(null))));
+        actions.add(new Action("HUD Editor", "Open the HUD editor", hudEditor, () -> mc.gui.setScreen(new dev.prismglass.gui.HudEditorScreen(null))));
         actions.add(new Action("Panic", "Turn every module off", panic, () -> {
             for (Module m : Prism.modules().all()) if (m.isEnabled() && m != this && !(m instanceof AntiCheat) && !(m instanceof Hud) && !(m instanceof dev.prismglass.module.Service)) m.setEnabled(false);
             ChatUtil.info("Panic: everything off");
@@ -62,7 +62,7 @@ public class KeyActions extends Module {
 
     /** Key pressed in game (not in a screen). */
     public void onKeyPress(int key) {
-        if (key == KeyUtil.NONE || mc.player == null || mc.screen != null) return;
+        if (key == KeyUtil.NONE || mc.player == null || mc.gui.screen() != null) return;
         for (Action a : actions) if (a.key().get() == key) a.run().run();
     }
 

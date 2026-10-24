@@ -150,7 +150,7 @@ public final class Render3D {
     /** Line from just in front of the camera (so it starts at the crosshair) to a point. */
     public static void tracer(Vec3 to, int color) {
         if (source == null) return;
-        var camera = mc.gameRenderer.getMainCamera();
+        var camera = mc.gameRenderer.mainCamera();
         Vec3 look = Vec3.directionFromRotation(camera.xRot(), camera.yRot());
         Vec3 from = cam.add(look.scale(0.5));
         line(lines(true), from.x, from.y, from.z, to.x, to.y, to.z, color);

@@ -113,7 +113,7 @@ public final class Glass {
                 try { ((AutoCloseable) r[0]).close(); } catch (Exception ignored) {}
                 return true;
             });
-            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
             GpuTexture color = main.getColorTexture();
             if (color == null) return;
             int w = color.getWidth(0), h = color.getHeight(0);

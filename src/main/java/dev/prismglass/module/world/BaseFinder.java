@@ -141,7 +141,7 @@ public class BaseFinder extends Module {
     public void onPacketReceive(PacketEvent event) {
         long now = System.currentTimeMillis();
         if (event.packet instanceof ClientboundLevelChunkWithLightPacket p) {
-            long key = ChunkPos.pack(p.getX(), p.getZ());
+            long key = ChunkPos.pack(p.x(), p.z());
             loadTimes.put(key, now);
             dirty.add(key);
         } else if (event.packet instanceof ClientboundBlockUpdatePacket p) {
@@ -310,10 +310,10 @@ public class BaseFinder extends Module {
         // planks: villages/mineshafts have them, so weak
         put(w, cap, 0.15f, 15, Blocks.OAK_PLANKS, Blocks.SPRUCE_PLANKS, Blocks.BIRCH_PLANKS, Blocks.JUNGLE_PLANKS, Blocks.ACACIA_PLANKS,
             Blocks.DARK_OAK_PLANKS, Blocks.MANGROVE_PLANKS, Blocks.CHERRY_PLANKS, Blocks.BAMBOO_PLANKS, Blocks.CRIMSON_PLANKS, Blocks.WARPED_PLANKS);
-        put(w, cap, 2.5f, 50, Blocks.WHITE_CONCRETE, Blocks.ORANGE_CONCRETE, Blocks.MAGENTA_CONCRETE, Blocks.LIGHT_BLUE_CONCRETE,
-            Blocks.YELLOW_CONCRETE, Blocks.LIME_CONCRETE, Blocks.PINK_CONCRETE, Blocks.GRAY_CONCRETE, Blocks.LIGHT_GRAY_CONCRETE,
-            Blocks.CYAN_CONCRETE, Blocks.PURPLE_CONCRETE, Blocks.BLUE_CONCRETE, Blocks.BROWN_CONCRETE, Blocks.GREEN_CONCRETE,
-            Blocks.RED_CONCRETE, Blocks.BLACK_CONCRETE);
+        put(w, cap, 2.5f, 50, Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.WHITE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.ORANGE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.MAGENTA), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.LIGHT_BLUE),
+            Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.YELLOW), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.LIME), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.PINK), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.GRAY), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.LIGHT_GRAY),
+            Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.CYAN), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.PURPLE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.BLUE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.BROWN), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.GREEN),
+            Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.RED), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.BLACK));
         put(w, cap, 2f, 30, Blocks.QUARTZ_BLOCK, Blocks.SMOOTH_QUARTZ, Blocks.QUARTZ_BRICKS, Blocks.QUARTZ_PILLAR, Blocks.BRICKS,
             Blocks.SEA_LANTERN, Blocks.IRON_BARS, Blocks.SCAFFOLDING, Blocks.HONEY_BLOCK, Blocks.SLIME_BLOCK);
         put(w, cap, 3f, 40, Blocks.CRAFTING_TABLE, Blocks.ANVIL, Blocks.CHIPPED_ANVIL, Blocks.DAMAGED_ANVIL, Blocks.GRINDSTONE,
@@ -323,7 +323,7 @@ public class BaseFinder extends Module {
         put(w, cap, 6f, 60, Blocks.IRON_BLOCK, Blocks.GOLD_BLOCK, Blocks.DIAMOND_BLOCK, Blocks.EMERALD_BLOCK, Blocks.NETHERITE_BLOCK,
             Blocks.LAPIS_BLOCK, Blocks.REDSTONE_BLOCK, Blocks.RESPAWN_ANCHOR, Blocks.CONDUIT, Blocks.LODESTONE);
         put(w, cap, 1f, 20, Blocks.TORCH, Blocks.WALL_TORCH, Blocks.LANTERN, Blocks.SOUL_LANTERN, Blocks.SOUL_TORCH, Blocks.SOUL_WALL_TORCH);
-        put(w, cap, 1f, 20, Blocks.CRYING_OBSIDIAN, Blocks.WHITE_WOOL, Blocks.WHITE_CARPET, Blocks.BLACK_WOOL, Blocks.RED_WOOL);
+        put(w, cap, 1f, 20, Blocks.CRYING_OBSIDIAN, Blocks.WOOL.pick(net.minecraft.world.item.DyeColor.WHITE), Blocks.CARPET.pick(net.minecraft.world.item.DyeColor.WHITE), Blocks.WOOL.pick(net.minecraft.world.item.DyeColor.BLACK), Blocks.WOOL.pick(net.minecraft.world.item.DyeColor.RED));
 
         if (overworld || end) {
             // nether blocks out of place (ruined portals add a little netherrack, hence the cap)
@@ -384,7 +384,7 @@ public class BaseFinder extends Module {
 
     @Override
     public void onRender2D(GuiGraphicsExtractor ctx, float delta) {
-        if (!minimap.get() || mc.options.hideGui) return;
+        if (!minimap.get() || mc.gui.hud.isHidden()) return;
         int radius = mapRadius.getInt(), cell = mapCell.getInt();
         int size = (radius * 2 + 1) * cell;
         int sw = ctx.guiWidth(), sh = ctx.guiHeight();

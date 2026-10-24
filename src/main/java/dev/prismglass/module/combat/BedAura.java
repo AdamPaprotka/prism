@@ -14,7 +14,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.BedItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -42,13 +41,13 @@ public class BedAura extends Module {
             if (BlockUtil.state(placedHead).getBlock() instanceof net.minecraft.world.level.block.BedBlock && Prism.guard().canPlace()) {
                 mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
                     new BlockHitResult(Vec3.atCenterOf(placedHead), Direction.UP, placedHead, false));
-                mc.player.swing(InteractionHand.MAIN_HAND);
+                dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
             }
             placedHead = null;
             return;
         }
 
-        int bed = InvUtil.findHotbar(s -> s.getItem() instanceof BedItem);
+        int bed = InvUtil.findHotbar(s -> s.is(net.minecraft.tags.ItemTags.BEDS));
         if (bed == -1) return;
         BlockPos tp = t.blockPosition().above();
         for (Direction d : BlockUtil.HORIZONTALS) {
@@ -66,7 +65,7 @@ public class BedAura extends Module {
             InvUtil.swap(bed, false);
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
                 new BlockHitResult(Vec3.atCenterOf(foot.below()).add(0, 0.5, 0), Direction.UP, foot.below(), false));
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
             InvUtil.restore(prev);
             placedHead = head;
             return;

@@ -36,7 +36,7 @@ public class ElytraBoost extends Module {
         if (!p.isFallFlying()) { fakeLeft = 0; return; }
         if (fakeLeft > 0) { fakeLeft--; push(); }
         double speed = p.getDeltaMovement().length() * 20;
-        boolean want = (KeyUtil.isDown(boostKey.get()) && mc.screen == null) || (auto.get() && speed < minSpeed.get());
+        boolean want = (KeyUtil.isDown(boostKey.get()) && mc.gui.screen() == null) || (auto.get() && speed < minSpeed.get());
         if (!want || wait > 0) return;
         if (mode.is("Fake")) { fakeLeft = fakeTicks.getInt(); wait = Math.max(cooldown.getInt(), fakeTicks.getInt()); return; }
         if (p.getOffhandItem().is(Items.FIREWORK_ROCKET)) { mc.gameMode.useItem(p, InteractionHand.OFF_HAND); wait = cooldown.getInt(); return; }

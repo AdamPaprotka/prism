@@ -72,7 +72,7 @@ final class PluginsNetTest {
 
     private static void tick() {
         mc.options.pauseOnLostFocus = false;
-        if (mc.player == null || mc.level == null || mc.getConnection() == null || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+        if (mc.player == null || mc.level == null || mc.getConnection() == null || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         PluginScanner scanner = Prism.modules().get(PluginScanner.class);
         stepTick++;
         joinTicks++;

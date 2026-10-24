@@ -15,12 +15,12 @@ public abstract class ChatScreenMixin {
     /** With chat open the cursor is free: clicking the NowPlaying cover opens the song, the lyrics open the full sheet. */
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void prism$nowPlayingClick(MouseButtonEvent event, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
-        if (event.button() != 0) return;
+        if (event.button() != dev.prismglass.util.KeyUtil.MOUSE_LEFT) return;
         float[] cover = Hud.npCover, text = Hud.npText;
         boolean onCover = cover != null && inside(cover, event.x(), event.y());
         boolean onText = text != null && inside(text, event.x(), event.y());
         if (!onCover && !onText) return;
-        Minecraft.getInstance().setScreen(onCover ? new NowPlayingScreen(NowPlayingScreen.Page.SONG, cover.clone())
+        Minecraft.getInstance().gui.setScreen(onCover ? new NowPlayingScreen(NowPlayingScreen.Page.SONG, cover.clone())
             : new NowPlayingScreen(NowPlayingScreen.Page.LYRICS, text.clone()));
         cir.setReturnValue(true);
     }

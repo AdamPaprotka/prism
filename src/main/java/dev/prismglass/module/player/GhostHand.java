@@ -28,7 +28,7 @@ public class GhostHand extends Module {
 
     @Override
     public void onTick() {
-        boolean down = mc.options.keyUse.isDown() && mc.screen == null;
+        boolean down = mc.options.keyUse.isDown() && mc.gui.screen() == null;
         boolean pressed = down && !wasDown;
         wasDown = down;
         if (!pressed) return;
@@ -38,9 +38,9 @@ public class GhostHand extends Module {
         if (hit == null) return;
         while (mc.options.keyUse.consumeClick()) {} // vanilla would place/use the held item too
         Vec3 eye = mc.player.getEyePosition();
-        var face = net.minecraft.core.Direction.getApproximateNearest(eye.subtract(hit.getCenter()));
-        mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(hit.getCenter().add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(0.5)), face, hit, false));
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        var face = net.minecraft.core.Direction.getApproximateNearest(eye.subtract(net.minecraft.world.phys.Vec3.atCenterOf(hit)));
+        mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(hit).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(0.5)), face, hit, false));
+        dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
     }
 
     /** First container block along the look line (0.1 block steps). */

@@ -273,7 +273,7 @@ public class PearlPredict extends Module {
         float pitch = (float) -Math.max(5, Math.min(45, 4 + distance * 0.55));
         server.execute(() -> {
             var level = sp.level();
-            ThrownEnderpearl pearl = new ThrownEnderpearl(net.minecraft.world.entity.EntityType.ENDER_PEARL, level);
+            ThrownEnderpearl pearl = new ThrownEnderpearl(net.minecraft.world.entity.EntityTypes.ENDER_PEARL, level);
             pearl.setPos(sp.getX() + Math.cos(angle + 1.6) * 1.5, sp.getEyeY() - 0.1, sp.getZ() + Math.sin(angle + 1.6) * 1.5);
             float yaw = (float) Math.toDegrees(angle);
             pearl.shoot(-Mth.sin(yaw * Mth.DEG_TO_RAD) * Mth.cos(pitch * Mth.DEG_TO_RAD), -Mth.sin(pitch * Mth.DEG_TO_RAD),

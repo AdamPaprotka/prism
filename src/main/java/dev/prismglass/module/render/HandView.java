@@ -43,9 +43,9 @@ public class HandView extends Module {
         // pivot where the hand sits (vanilla's applyItemArmTransform position)
         float px = side * 0.56f, py = -0.52f, pz = -0.72f;
         pose.translate(px + side * x, py + y, pz + z);
-        if (rx != 0) pose.mulPose(Axis.XP.rotationDegrees(rx));
-        if (ry != 0) pose.mulPose(Axis.YP.rotationDegrees(side * ry));
-        if (rz != 0) pose.mulPose(Axis.ZP.rotationDegrees(side * rz));
+        if (rx != 0) pose.rotate(Axis.XP.rotationDegrees(rx));
+        if (ry != 0) pose.rotate(Axis.YP.rotationDegrees(side * ry));
+        if (rz != 0) pose.rotate(Axis.ZP.rotationDegrees(side * rz));
         if (s != 1) pose.scale(s, s, s);
         pose.translate(-px, -py, -pz);
     }

@@ -67,7 +67,7 @@ public final class PingSpikeTest {
         if (phase >= 100) return;
         if (ticks > 2500) { check("test finished in time", false); finish(); return; }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) {
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) {
             if (phase == 90 && mc.level == null) { // D: world gone
                 PingSpike ps = Prism.modules().get(PingSpike.class);
                 check("D: module is off after the disconnect", !ps.isEnabled());

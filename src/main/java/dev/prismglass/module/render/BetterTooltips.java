@@ -62,7 +62,7 @@ public class BetterTooltips extends Module {
     @Override
     public void onTick() {
         // remember the ender chest while it's open (its title is the translatable "container.enderchest")
-        if (mc.screen instanceof ContainerScreen cs && cs.getTitle().equals(Component.translatable("container.enderchest"))) {
+        if (mc.gui.screen() instanceof ContainerScreen cs && cs.getTitle().equals(Component.translatable("container.enderchest"))) {
             NonNullList<ItemStack> items = NonNullList.withSize(27, ItemStack.EMPTY);
             for (int i = 0; i < 27 && i < cs.getMenu().slots.size(); i++) items.set(i, cs.getMenu().getSlot(i).getItem().copy());
             echestItems = items;
@@ -160,7 +160,7 @@ public class BetterTooltips extends Module {
     public static void draw(GuiGraphicsExtractor ctx, int mouseX, int mouseY, ItemStack stack) {
         BetterTooltips m = Prism.modules().get(BetterTooltips.class);
         if (m == null || !m.isEnabled() || !m.echest.get() || echestItems == null || !stack.is(Items.ENDER_CHEST)) return;
-        if (mc.screen instanceof ContainerScreen cs && cs.getTitle().equals(Component.translatable("container.enderchest"))) return;
+        if (mc.gui.screen() instanceof ContainerScreen cs && cs.getTitle().equals(Component.translatable("container.enderchest"))) return;
         int w = 9 * 18 + 8, h = 3 * 18 + 8;
         int x = Math.min(mouseX + 10, ctx.guiWidth() - w - 2), y = Math.max(2, mouseY - h - 10);
         ctx.nextStratum();

@@ -67,8 +67,7 @@ public class SpearKill extends Module {
 
         if (!charging && inWindow && p.getAttackStrengthScale(0f) >= 1f && Prism.guard().canInteractEntity(t.getId())) {
             PiercingWeapon pw = held.get(DataComponents.PIERCING_WEAPON);
-            mc.gameMode.piercingAttack(pw);
-            p.swing(InteractionHand.MAIN_HAND);
+            mc.gameMode.piercingAttack(held.getAttackAnimation(), pw); // swings too since 26.3
             p.resetAttackStrengthTicker();
             return;
         }

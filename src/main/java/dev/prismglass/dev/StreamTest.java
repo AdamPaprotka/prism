@@ -38,7 +38,7 @@ public final class StreamTest {
             requested = true;
             String name = "prismstream-" + System.currentTimeMillis();
             LevelSettings info = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.EASY, false, false), true, WorldDataConfiguration.DEFAULT);
-            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), WorldPresets::createFlatWorldDimensions, null);
+            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), r -> r.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null) return;
@@ -67,7 +67,7 @@ public final class StreamTest {
             log("overlay active=" + Overlay.active() + " shown=" + Overlay.isShown() + " affinity=0x" + Integer.toHexString(Overlay.affinity()));
             Overlay.debugRaise();
             Overlay.debugReadbackFile = mc.gameDirectory.toPath().resolve("streamproof-overlay.png").toString();
-            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-stream-main.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-stream-main.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         }
         if (t == 120) capture(1);
         if (t == 400) {
@@ -75,7 +75,7 @@ public final class StreamTest {
         }
         if (t == 420) capture(2);
         if (t == 440) {
-            mc.setScreen(new dev.prismglass.gui.ClickGuiScreen());
+            mc.gui.setScreen(new dev.prismglass.gui.ClickGuiScreen());
             dev.prismglass.util.ChatUtil.good("StreamProof test message (should be a hidden toast)");
         }
         if (t == 470) {
@@ -83,7 +83,7 @@ public final class StreamTest {
             Overlay.debugReadbackFile = mc.gameDirectory.toPath().resolve("streamproof-clickgui.png").toString();
         }
         if (t == 480) capture(4);
-        if (t == 520) mc.setScreen(null);
+        if (t == 520) mc.gui.setScreen(null);
         if (t == 530) log("after close cursor mode=0x" + Integer.toHexString(GLFW.glfwGetInputMode(main, GLFW.GLFW_CURSOR)) + " (disabled=0x34003)");
         if (t == 700) {
             Overlay.setExcluded(true);

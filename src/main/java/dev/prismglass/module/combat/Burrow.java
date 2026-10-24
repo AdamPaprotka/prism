@@ -39,7 +39,7 @@ public class Burrow extends Module {
         InvUtil.swap(slot, false);
         mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
             new BlockHitResult(Vec3.atCenterOf(pos.below()).add(0, 0.5, 0), Direction.UP, pos.below(), false));
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
         InvUtil.restore(prev);
         mc.player.connection.send(new ServerboundMovePlayerPacket.Pos(x, y + rubberband.get(), z, false, hc));
     }

@@ -79,7 +79,7 @@ public final class ModTest {
         }
         Case c = cases.get(i);
         // back to the start spot, facing south, empty inventory
-        mc.setScreen(null);
+        mc.gui.setScreen(null);
         mc.player.setYRot(0);
         mc.player.setXRot(0);
         cmd(f("tp @p %.1f %d %.1f 0 0", (px) + 0.5, py, (pz) + 0.5));
@@ -99,7 +99,7 @@ public final class ModTest {
             worldRequested = true;
             String name = "prismtest-mods-" + System.currentTimeMillis();
             LevelSettings info = new LevelSettings(name, GameType.SURVIVAL, new LevelSettings.DifficultySettings(Difficulty.EASY, false, false), true, WorldDataConfiguration.DEFAULT);
-            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), WorldPresets::createFlatWorldDimensions, null);
+            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), r -> r.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
         if (mc.player == null || mc.level == null || server() == null) return;

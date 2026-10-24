@@ -92,11 +92,11 @@ public class HudEditorScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         String hit = at(event.x(), event.y());
         if (hit == null) return super.mouseClicked(event, doubleClick);
-        if (event.button() == 1) {
+        if (event.button() == dev.prismglass.util.KeyUtil.MOUSE_RIGHT) {
             hud.resetPosition(hit);
             return true;
         }
-        if (event.button() == 0) {
+        if (event.button() == dev.prismglass.util.KeyUtil.MOUSE_LEFT) {
             float[] b = hud.bounds().get(hit);
             dragging = hit;
             offX = (float) event.x() - b[0];
@@ -140,7 +140,7 @@ public class HudEditorScreen extends Screen {
     @Override
     public void onClose() {
         Prism.config().save();
-        minecraft.setScreen(parent);
+        minecraft.gui.setScreen(parent);
     }
 
     @Override

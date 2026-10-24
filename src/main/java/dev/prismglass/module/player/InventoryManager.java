@@ -12,7 +12,6 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.inventory.ContainerInput;
-import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.CrossbowItem;
@@ -53,8 +52,8 @@ public class InventoryManager extends Module {
 
     @Override
     public void onTick() {
-        boolean invOpen = mc.screen instanceof InventoryScreen;
-        if ((mc.screen != null && !invOpen) || (onlyInventory.get() && !invOpen)) return;
+        boolean invOpen = mc.gui.screen() instanceof InventoryScreen;
+        if ((mc.gui.screen() != null && !invOpen) || (onlyInventory.get() && !invOpen)) return;
         if (!timer.passed(delay.get()) || mc.player.isUsingItem()) return;
         if (sortStep() || (merge.get() && mergeStep())) timer.reset();
     }
@@ -110,7 +109,7 @@ public class InventoryManager extends Module {
     private static ToDoubleFunction<ItemStack> scorer(String cat) {
         return switch (cat) {
             case "sword" -> s -> s.is(ItemTags.SWORDS) ? CombatUtil.attackDamage(s) + ench(s, "sharpness") * 0.6 : 0;
-            case "axe" -> s -> s.getItem() instanceof AxeItem ? CombatUtil.attackDamage(s) + s.getDestroySpeed(Blocks.OAK_LOG.defaultBlockState()) * 0.1 : 0;
+            case "axe" -> s -> s.is(net.minecraft.tags.ItemTags.AXES) ? CombatUtil.attackDamage(s) + s.getDestroySpeed(Blocks.OAK_LOG.defaultBlockState()) * 0.1 : 0;
             case "pickaxe" -> s -> s.is(ItemTags.PICKAXES) ? s.getDestroySpeed(Blocks.STONE.defaultBlockState()) + ench(s, "efficiency") : 0;
             case "shovel" -> s -> s.is(ItemTags.SHOVELS) ? s.getDestroySpeed(Blocks.DIRT.defaultBlockState()) + ench(s, "efficiency") : 0;
             case "bow" -> s -> s.getItem() instanceof BowItem ? 1 + ench(s, "power") : 0;

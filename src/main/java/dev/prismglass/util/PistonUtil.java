@@ -52,7 +52,7 @@ public final class PistonUtil {
         Direction face = BlockUtil.breakFace(pos);
         if (face == null) face = Direction.UP;
         mc.gameMode.startDestroyBlock(pos, face);
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        SwingUtil.punch();
         return true;
     }
 }

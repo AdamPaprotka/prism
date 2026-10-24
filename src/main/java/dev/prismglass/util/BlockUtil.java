@@ -11,7 +11,6 @@ import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -42,6 +41,11 @@ public final class BlockUtil {
     }
 
     public static BlockState state(BlockPos pos) { return mc.level.getBlockState(pos); }
+
+    /** 26.1.2's BlockState.blocksMotion() (removed in 26.3): legacy-solid, cobwebs and bamboo saplings excepted. */
+    public static boolean blocksMotion(BlockState s) {
+        return s.isSolid() && !s.is(Blocks.COBWEB) && !s.is(Blocks.BAMBOO_SAPLING);
+    }
 
     public static boolean isReplaceable(BlockPos pos) { return state(pos).canBeReplaced(); }
 
@@ -200,7 +204,7 @@ public final class BlockUtil {
         }
 
         InteractionResult result = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
-        if (result.consumesAction()) mc.player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        // no swing packet since 26.3: the server swings for the use packet itself
 
         if (switched && swapBack) InvUtil.restore(prev);
         placedThisTick++;
@@ -236,7 +240,7 @@ public final class BlockUtil {
             InvUtil.swap(hotbarSlot, false);
         }
         InteractionResult result = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
-        if (result.consumesAction()) mc.player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        // no swing packet since 26.3: the server swings for the use packet itself
         if (switched && swapBack) InvUtil.restore(prev);
         placedThisTick++;
         return result.consumesAction() ? Result.PLACED : Result.FAILED;

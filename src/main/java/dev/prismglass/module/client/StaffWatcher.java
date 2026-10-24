@@ -248,7 +248,7 @@ public class StaffWatcher extends Module {
             if (what != null) incomingGhosts.add(new Ghost(new Vec3(p.getX(), p.getY(), p.getZ()), what, -1, System.currentTimeMillis()));
         } else if (e.packet instanceof ClientboundLevelEventPacket p && p.getType() == 2001) {
             // block destroyed (particles + sound); data = the broken block's state id
-            incomingGhosts.add(new Ghost(p.getPos().getCenter(), "block broken", p.getData(), System.currentTimeMillis()));
+            incomingGhosts.add(new Ghost(net.minecraft.world.phys.Vec3.atCenterOf(p.getPos()), "block broken", p.getData(), System.currentTimeMillis()));
         } else if (e.packet instanceof ClientboundExplodePacket p) {
             incomingGhosts.add(new Ghost(p.center(), "explosion", -1, System.currentTimeMillis()));
         } else if (e.packet instanceof ClientboundCommandSuggestionsPacket p && p.id() == PROBE_ID) {
@@ -576,7 +576,7 @@ public class StaffWatcher extends Module {
         if (headPop.get() && !dev.prismglass.streamproof.Overlay.active()) {
             ItemStack stack = new ItemStack(Items.PLAYER_HEAD);
             if (head != null) stack.set(DataComponents.PROFILE, head);
-            mc.gameRenderer.displayItemActivation(stack);
+            mc.player.displayItemActivation(stack);
             if (particles.get()) mc.particleEngine.createTrackingEmitter(mc.player, ParticleTypes.TOTEM_OF_UNDYING, 30);
         }
         Vec3 at = mc.player.position();

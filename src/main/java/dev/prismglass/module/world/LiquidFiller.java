@@ -54,7 +54,7 @@ public class LiquidFiller extends Module {
             if (!wanted(p) || RotationUtil.distanceToBox(eye, new AABB(p)) > r) continue;
             if (notUnderMe.get() && mc.player.getBoundingBox().intersects(new AABB(p))) continue;
             if (BlockUtil.getPlaceSide(p) == null) continue;
-            double d = eye.distanceToSqr(p.getCenter());
+            double d = eye.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(p));
             if (d < bestD) { bestD = d; best = p.immutable(); }
         }
         if (best != null) BlockUtil.place(best, slot, true, 40);

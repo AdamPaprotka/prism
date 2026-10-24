@@ -180,7 +180,7 @@ public class Xray extends Module {
                     int c = colorOf(ore.block());
                     Render3D.box(new AABB(ore.pos()), ColorUtil.withAlpha(c, confirmed ? fill.getInt() * 2 : fill.getInt()),
                         ColorUtil.withAlpha(c, confirmed ? 255 : 170), true);
-                    if (tracers.get()) Render3D.tracer(ore.pos().getCenter(), ColorUtil.withAlpha(c, 120));
+                    if (tracers.get()) Render3D.tracer(net.minecraft.world.phys.Vec3.atCenterOf(ore.pos()), ColorUtil.withAlpha(c, 120));
                 }
             }
             return;
@@ -191,7 +191,7 @@ public class Xray extends Module {
                 if (!targets.contains(b)) continue; // mined since the last scan
                 int c = colorOf(b);
                 Render3D.box(new AABB(p), ColorUtil.withAlpha(c, fill.getInt()), c, true);
-                if (tracers.get()) Render3D.tracer(p.getCenter(), ColorUtil.withAlpha(c, 120));
+                if (tracers.get()) Render3D.tracer(net.minecraft.world.phys.Vec3.atCenterOf(p), ColorUtil.withAlpha(c, 120));
             }
         }
     }

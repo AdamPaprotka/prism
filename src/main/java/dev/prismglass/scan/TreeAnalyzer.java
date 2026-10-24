@@ -113,7 +113,7 @@ public final class TreeAnalyzer {
         if (v != null) return v;
         Set<String> out = new HashSet<>();
         try {
-            CommandBuildContext ctx = Commands.createValidationContext(VanillaRegistries.createLookup());
+            CommandBuildContext ctx = Commands.createValidationContext(VanillaRegistries.createWorldLookup());
             for (CommandNode<?> n : new Commands(Commands.CommandSelection.ALL, ctx).getDispatcher().getRoot().getChildren()) out.add(n.getName());
         } catch (Throwable t) {
             out.addAll(VANILLA_FALLBACK);

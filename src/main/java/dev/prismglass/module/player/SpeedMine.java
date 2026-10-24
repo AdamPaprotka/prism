@@ -52,7 +52,7 @@ public class SpeedMine extends Module {
             BlockPos pos = bhr.getBlockPos();
             if (!BlockUtil.isUnbreakable(pos) && !pos.equals(packetPos)) {
                 mc.player.connection.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, pos, bhr.getDirection()));
-                mc.player.swing(InteractionHand.MAIN_HAND);
+                dev.prismglass.util.SwingUtil.punch();
                 packetPos = pos;
                 packetFace = bhr.getDirection();
                 packetStart = System.currentTimeMillis();
@@ -68,7 +68,7 @@ public class SpeedMine extends Module {
                 Direction face = BlockUtil.isFaceVisible(packetPos, packetFace, mc.player.getEyePosition()) ? packetFace : BlockUtil.breakFace(packetPos);
                 if (face == null || !BlockUtil.readyToDig(packetPos, 25)) return;
                 mc.player.connection.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, packetPos, face));
-                mc.player.swing(InteractionHand.MAIN_HAND);
+                dev.prismglass.util.SwingUtil.punch();
                 packetStart = System.currentTimeMillis() + 1500;
             }
         }

@@ -72,7 +72,7 @@ public final class StructureTest {
         }
         if (inWorld == 400) {
             log("module info after tp: " + Prism.modules().get(dev.prismglass.module.world.StructureFinder.class).getInfo());
-            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-structures.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-structures.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
         }
         if (inWorld == 401) {
             dev.prismglass.module.client.AutoTranslate.debugTranslate("Hola, ¿cómo estás? Vamos a la base.", "en")

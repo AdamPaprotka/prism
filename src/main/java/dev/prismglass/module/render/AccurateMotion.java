@@ -76,7 +76,7 @@ public class AccurateMotion extends Module {
             if (!(e instanceof LivingEntity le) || e == mc.player) continue;
             if (!(e instanceof Player) && !mobs.get()) continue;
             seen.add(e.getId());
-            Vec3 pos = le.getInterpolation().position();
+            Vec3 pos = dev.prismglass.util.EntityUtil.interpolationTarget(le);
             Track t = tracks.computeIfAbsent(e.getId(), k -> new Track());
             if (t.last == null) { t.last = pos; t.lastChangeTick = tick; continue; }
             if (!pos.equals(t.last)) {

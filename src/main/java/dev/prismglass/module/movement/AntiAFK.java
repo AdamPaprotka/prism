@@ -23,7 +23,7 @@ public class AntiAFK extends Module {
     public void onTick() {
         if (!timer.tick(interval.get() * 1000)) return;
         if (jump.get() && mc.player.onGround()) mc.player.jumpFromGround();
-        if (swing.get()) mc.player.swing(InteractionHand.MAIN_HAND);
+        if (swing.get()) dev.prismglass.util.SwingUtil.punch();
         if (spin.get()) mc.player.setYRot(mc.player.getYRot() + 15f);
     }
 }

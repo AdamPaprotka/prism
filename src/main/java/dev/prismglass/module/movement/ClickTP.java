@@ -31,7 +31,7 @@ public class ClickTP extends Module {
 
     @Override
     public void onTick() {
-        boolean down = mc.options.keyUse.isDown() && mc.screen == null;
+        boolean down = mc.options.keyUse.isDown() && mc.gui.screen() == null;
         boolean pressed = down && !wasDown;
         wasDown = down;
         if (!pressed || (emptyHand.get() && !mc.player.getMainHandItem().isEmpty())) return;

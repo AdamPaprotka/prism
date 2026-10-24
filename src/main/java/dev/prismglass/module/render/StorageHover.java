@@ -65,7 +65,7 @@ public class StorageHover extends Module {
     @Override
     public void onPacketSend(PacketEvent e) {
         if (e.packet instanceof ServerboundUseItemOnPacket p) {
-            clicked = p.getHitResult().getBlockPos();
+            clicked = p.hitResult().getBlockPos();
             clickedAt = System.currentTimeMillis();
         }
     }
@@ -74,7 +74,7 @@ public class StorageHover extends Module {
     public void onTick() {
         readLocalServer();
         if (clicked == null || System.currentTimeMillis() - clickedAt > 30_000) return;
-        if (!(mc.screen instanceof AbstractContainerScreen<?> s) || s.getMenu() == mc.player.inventoryMenu) return;
+        if (!(mc.gui.screen() instanceof AbstractContainerScreen<?> s) || s.getMenu() == mc.player.inventoryMenu) return;
         if (!isStorage(clicked)) { clicked = null; return; }
         int n = s.getMenu().slots.size() - 36; // the menu's own slots come before the player inventory
         if (n <= 0) return;
@@ -156,7 +156,7 @@ public class StorageHover extends Module {
 
     @Override
     public void onRender2D(GuiGraphicsExtractor ctx, float delta) {
-        if (mc.screen != null || mc.options.hideGui) return;
+        if (mc.gui.screen() != null || mc.gui.hud.isHidden()) return;
         HitResult hr = mc.player.pick(range.get(), delta, false);
         if (!(hr instanceof BlockHitResult bhr) || hr.getType() != HitResult.Type.BLOCK) return;
         BlockPos pos = bhr.getBlockPos();

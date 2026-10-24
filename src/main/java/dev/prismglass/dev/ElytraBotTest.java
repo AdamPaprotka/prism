@@ -43,7 +43,7 @@ public final class ElytraBotTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null) return;
-        if (!started && (mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen
+        if (!started && (mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen
             || !mc.level.hasChunkAt(mc.player.blockPosition()))) return; // terrain still generating
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
@@ -56,7 +56,7 @@ public final class ElytraBotTest {
             run(s, "time set day");
         }
         if (t == 60) {
-            if (mc.screen instanceof net.minecraft.client.gui.screens.PauseScreen) mc.setScreen(null);
+            if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.PauseScreen) mc.gui.setScreen(null);
             boolean wall = Boolean.getBoolean("prismglass.ebwall");
             tx = mc.player.getX() + 600;
             tz = wall ? mc.player.getZ() : mc.player.getZ() + 400;

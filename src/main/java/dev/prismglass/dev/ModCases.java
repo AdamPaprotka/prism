@@ -16,7 +16,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.animal.cow.Cow;
-import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -77,16 +77,16 @@ final class ModCases {
             buildPortal();
             enable(Portals.class);
         }, () -> {
-            if (caseTicks == 8) mc.setScreen(new InventoryScreen(mc.player));
-            return caseTicks >= 50 && mc.screen instanceof InventoryScreen && mc.player.portalEffectIntensity > 0;
+            if (caseTicks == 8) mc.gui.setScreen(new InventoryScreen(mc.player));
+            return caseTicks >= 50 && mc.gui.screen() instanceof InventoryScreen && mc.player.portalEffectIntensity > 0;
         }, ModCases::clearPortal);
 
         add("Portals off: vanilla closes it (control)", 40, () -> {
             buildPortal();
             disable(Portals.class);
         }, () -> {
-            if (caseTicks == 8) mc.setScreen(new InventoryScreen(mc.player));
-            return caseTicks >= 20 && mc.screen == null;
+            if (caseTicks == 8) mc.gui.setScreen(new InventoryScreen(mc.player));
+            return caseTicks >= 20 && mc.gui.screen() == null;
         }, ModCases::clearPortal);
 
         add("NoMiningTrace: crosshair hits the block behind an armour stand", 40, () -> {
@@ -165,8 +165,8 @@ final class ModCases {
             }
             // the client's copy: AutoSign never writes it locally, so text here came back from the server
             return mc.level.getBlockEntity(at) instanceof SignBlockEntity sign
-                && sign.getFrontText().getMessage(0, false).getString().equals("Prism")
-                && sign.getFrontText().getMessage(1, false).getString().equals("Glass") && mc.screen == null;
+                && sign.getText(net.minecraft.world.level.block.entity.SignTextSlot.FRONT).getMessages(false).get(0).getString().equals("Prism")
+                && sign.getText(net.minecraft.world.level.block.entity.SignTextSlot.FRONT).getMessages(false).get(1).getString().equals("Glass") && mc.gui.screen() == null;
         }, () -> { disable(AutoSign.class); cmd(f("setblock %d %d %d air", px, py, pz + 2)); });
     }
 
@@ -261,7 +261,7 @@ final class ModCases {
 
         add("Ambience recolours the sky", 30, () -> enable(Ambience.class),
             () -> {
-                int sky = mc.gameRenderer.getMainCamera().attributeProbe().getValue(net.minecraft.world.attribute.EnvironmentAttributes.SKY_COLOR, 1f);
+                int sky = net.minecraft.util.ARGB.colorFromVector3f(mc.gameRenderer.mainCamera().attributeProbe().getValue(net.minecraft.world.attribute.EnvironmentAttributes.SKY_COLOR, 1f));
                 return shot("ambience", 12) && caseTicks > 15 && sky == (dev.prismglass.Prism.modules().get(Ambience.class).skyColor.color() | 0xFF000000);
             }, () -> disable(Ambience.class));
 
@@ -290,10 +290,10 @@ final class ModCases {
             cmd("give @p end_crystal 16");
             enable(ItemHighlight.class);
         }, () -> {
-            if (caseTicks == 6) mc.setScreen(new InventoryScreen(mc.player));
+            if (caseTicks == 6) mc.gui.setScreen(new InventoryScreen(mc.player));
             return dev.prismglass.Prism.modules().get(ItemHighlight.class).wants(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.TOTEM_OF_UNDYING))
                 && shot("itemhighlight", 15) && caseTicks > 18;
-        }, () -> { mc.setScreen(null); disable(ItemHighlight.class); });
+        }, () -> { mc.gui.setScreen(null); disable(ItemHighlight.class); });
 
         add("EntityOwner labels my tamed wolf", 40, () -> {
             int[] u = net.minecraft.core.UUIDUtil.uuidToIntArray(mc.player.getUUID());
@@ -537,11 +537,11 @@ final class ModCases {
         add("Config tab shows the Services section", 30, () -> {
             enable(dev.prismglass.module.service.DamageAILearn.class);
             var gui = new dev.prismglass.gui.ClickGuiScreen();
-            mc.setScreen(gui);
+            mc.gui.setScreen(gui);
         }, () -> {
-            if (caseTicks == 4 && mc.screen instanceof dev.prismglass.gui.ClickGuiScreen g) g.debugMenu(1);
+            if (caseTicks == 4 && mc.gui.screen() instanceof dev.prismglass.gui.ClickGuiScreen g) g.debugMenu(1);
             return shot("services", 14) && caseTicks > 16;
-        }, () -> { mc.setScreen(null); disable(dev.prismglass.module.service.DamageAILearn.class); });
+        }, () -> { mc.gui.setScreen(null); disable(dev.prismglass.module.service.DamageAILearn.class); });
 
         add("Damage AI learns against real zombies", 700, () -> {
             var ai = enable(dev.prismglass.module.service.DamageAILearn.class);
@@ -652,7 +652,7 @@ final class ModCases {
     static boolean shot(String name, int at) {
         if (shots.contains(name)) return true;
         if (caseTicks < at) return false;
-        net.minecraft.client.Screenshot.grab(mc.gameDirectory, "modshot-" + name + ".png", mc.getMainRenderTarget(), 1, msg -> {});
+        net.minecraft.client.Screenshot.grab(mc.gameDirectory, "modshot-" + name + ".png", mc.gameRenderer.mainRenderTarget(), 1, msg -> {});
         shots.add(name);
         return true;
     }
@@ -669,7 +669,7 @@ final class ModCases {
     }
 
     private static void clearPortal() {
-        mc.setScreen(null);
+        mc.gui.setScreen(null);
         cmd(f("tp @p %.1f %d %.1f 0 0", (px) + 0.5, py, (pz) + 0.5));
         cmd(f("fill %d %d %d %d %d %d air", px - 1, py, pz + 2, px + 2, py + 3, pz + 2));
         cmd(f("fill %d %d %d %d %d %d grass_block", px - 1, py - 1, pz + 2, px + 2, py - 1, pz + 2));
@@ -697,8 +697,8 @@ final class ModCases {
     }
 
     private static void lookAtEnderman() {
-        EnderMan em = null;
-        for (var e : mc.level.entitiesForRendering()) if (e instanceof EnderMan m) em = m;
+        Enderman em = null;
+        for (var e : mc.level.entitiesForRendering()) if (e instanceof Enderman m) em = m;
         if (em == null) return;
         float[] r = dev.prismglass.util.RotationUtil.toward(new Vec3(em.getX(), em.getEyeY(), em.getZ()));
         mc.player.setYRot(r[0]);
@@ -708,16 +708,16 @@ final class ModCases {
     private static boolean cameraStare() { return stare(mc.player.getViewVector(1), mc.player.getEyePosition(), clientEnderman()); }
 
     private static boolean serverStare() {
-        EnderMan em = serverEntity(EnderMan.class);
+        Enderman em = serverEntity(Enderman.class);
         return em != null && stare(splayer().getViewVector(1), splayer().getEyePosition(), new Vec3(em.getX(), em.getEyeY(), em.getZ()));
     }
 
     private static Vec3 clientEnderman() {
-        for (var e : mc.level.entitiesForRendering()) if (e instanceof EnderMan m) return new Vec3(m.getX(), m.getEyeY(), m.getZ());
+        for (var e : mc.level.entitiesForRendering()) if (e instanceof Enderman m) return new Vec3(m.getX(), m.getEyeY(), m.getZ());
         return null;
     }
 
-    /** EnderMan.isLookingAtMe's cone (0.025, distance-adjusted); line of sight is open here. */
+    /** Enderman.isLookingAtMe's cone (0.025, distance-adjusted); line of sight is open here. */
     private static boolean stare(Vec3 look, Vec3 eye, Vec3 target) {
         if (target == null) return false;
         Vec3 dir = target.subtract(eye);

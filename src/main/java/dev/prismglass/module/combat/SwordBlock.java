@@ -34,7 +34,7 @@ public class SwordBlock extends Module {
         var p = mc.player;
         if (p == null || !weapon(p.getMainHandItem())) return false;
         if (p.isUsingItem() && p.getUsedItemHand() == InteractionHand.OFF_HAND && p.getUseItem().getItem() instanceof ShieldItem) return true;
-        return visualOnly.get() && mc.options.keyUse.isDown() && !(p.getOffhandItem().getItem() instanceof ShieldItem) && mc.screen == null;
+        return visualOnly.get() && mc.options.keyUse.isDown() && !(p.getOffhandItem().getItem() instanceof ShieldItem) && mc.gui.screen() == null;
     }
 
     public boolean hidesOffhand() {
@@ -45,8 +45,8 @@ public class SwordBlock extends Module {
     public void applyPose(HumanoidArm arm, PoseStack pose) {
         float invert = arm == HumanoidArm.RIGHT ? 1f : -1f;
         pose.translate(invert * -0.14142136F, 0.08F, 0.14142136F);
-        pose.mulPose(Axis.XP.rotationDegrees(-102.25F));
-        pose.mulPose(Axis.YP.rotationDegrees(invert * 13.365F));
-        pose.mulPose(Axis.ZP.rotationDegrees(invert * 78.05F));
+        pose.rotate(Axis.XP.rotationDegrees(-102.25F));
+        pose.rotate(Axis.YP.rotationDegrees(invert * 13.365F));
+        pose.rotate(Axis.ZP.rotationDegrees(invert * 78.05F));
     }
 }

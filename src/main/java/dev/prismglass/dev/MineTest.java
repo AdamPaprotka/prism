@@ -21,7 +21,7 @@ import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 /**
  * Dev only (-Pminetest): chat tab completion through the real ChatScreen, PacketMine in both modes on obsidian with
@@ -62,7 +62,7 @@ public final class MineTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         if (t == 30) {
@@ -79,7 +79,7 @@ public final class MineTest {
             run(s, "item replace entity @p hotbar.5 with obsidian 37");
             run(s, "item replace entity @p inventory.0 with obsidian 64");
             run(s, "item replace entity @p hotbar.6 with cooked_beef 3");
-            if (mc.screen != null) mc.setScreen(null);
+            if (mc.gui.screen() != null) mc.gui.setScreen(null);
         }
         if (t < 60) return;
         try {
@@ -96,16 +96,16 @@ public final class MineTest {
     /** Type each half command into a real ChatScreen (through EditBox.insertText, like typing), press Tab. */
     private static void completion() throws Exception {
         if (t % 10 != 0) return;
-        if (step >= TYPED.length) { mc.setScreen(null); phase = 1; step = 0; t = 100; return; }
-        if (!(mc.screen instanceof ChatScreen)) { mc.setScreen(new ChatScreen("", false)); return; }
-        ChatScreen chat = (ChatScreen) mc.screen;
+        if (step >= TYPED.length) { mc.gui.setScreen(null); phase = 1; step = 0; t = 100; return; }
+        if (!(mc.gui.screen() instanceof ChatScreen)) { mc.gui.setScreen(new ChatScreen("", false)); return; }
+        ChatScreen chat = (ChatScreen) mc.gui.screen();
         EditBox input = (EditBox) field(chat, EditBox.class);
         CommandSuggestions sug = (CommandSuggestions) field(chat, CommandSuggestions.class);
         String typed = TYPED[step];
         input.setValue("");
         input.insertText(typed);
         boolean shown = sug.isVisible();
-        sug.keyPressed(new KeyEvent(GLFW.GLFW_KEY_TAB, 0, 0));
+        sug.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
         log(String.format("typed '%s' -> list %s, after Tab: '%s'", typed, shown ? "shown" : "NOT shown", input.getValue()));
         var c = Prism.commands().complete(typed);
         log("   options " + (c == null ? "null" : c.options().subList(0, Math.min(6, c.options().size())) + (c.options().size() > 6 ? " +" + (c.options().size() - 6) : ""))

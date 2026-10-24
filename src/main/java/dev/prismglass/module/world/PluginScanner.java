@@ -608,7 +608,7 @@ public class PluginScanner extends Module {
 
     @Override
     public void onRender2D(GuiGraphicsExtractor ctx, float delta) {
-        if (!hud.get() || (mc.options.hideGui && !Hud.editing)) return;
+        if (!hud.get() || (mc.gui.hud.isHidden() && !Hud.editing)) return;
         ScanResult r = last;
         List<Finding> list = r == null ? List.of() : shown(r);
         List<String> lines = new ArrayList<>();

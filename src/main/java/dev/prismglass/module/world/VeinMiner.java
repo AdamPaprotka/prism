@@ -97,7 +97,7 @@ public class VeinMiner extends Module {
             double best = Double.MAX_VALUE;
             for (BlockPos p : queue) {
                 if (far(p, r) || BlockUtil.breakFace(p) == null) continue;
-                double d = mc.player.getEyePosition().distanceToSqr(p.getCenter());
+                double d = mc.player.getEyePosition().distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(p));
                 if (d < best) { best = d; current = p; }
             }
             if (current == null) return;
@@ -106,7 +106,7 @@ public class VeinMiner extends Module {
         }
         if (!BlockUtil.readyToDig(current, 30)) return;
         mc.gameMode.continueDestroyBlock(current, face);
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.punch();
     }
 
     private boolean far(BlockPos p, double r) { return RotationUtil.distanceToBox(mc.player.getEyePosition(), new AABB(p)) > r; }

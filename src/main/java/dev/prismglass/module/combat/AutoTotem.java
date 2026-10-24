@@ -22,7 +22,7 @@ public class AutoTotem extends Module {
     public void onTick() {
         Offhand off = Prism.modules().get(Offhand.class);
         if (off != null && off.isEnabled()) return;
-        if (mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING) || mc.screen != null && !(mc.screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen)) return;
+        if (mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING) || mc.gui.screen() != null && !(mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen)) return;
         if (!timer.passed(delay.get())) return;
         int slot = InvUtil.findInventory(Items.TOTEM_OF_UNDYING);
         if (slot == -1 || !InvUtil.canClick()) return;

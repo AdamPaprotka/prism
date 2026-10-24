@@ -30,6 +30,6 @@ public final class ChatUtil {
 
     public static void send(Component text) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.gui != null) mc.gui.getChat().addClientSystemMessage(text);
+        if (mc.gui != null) mc.gui.hud.getChat().addClientSystemMessage(text);
     }
 }

@@ -11,7 +11,7 @@ import dev.prismglass.module.client.ClickGui;
 import dev.prismglass.setting.*;
 import dev.prismglass.util.ColorUtil;
 import dev.prismglass.util.KeyUtil;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import java.awt.Color;
 import java.util.*;
@@ -252,7 +252,7 @@ public class ClickGuiScreen extends Screen {
         if (searchFocused) fill(ctx, (int) (x + 30), (int) (y + 18), (int) (x + w - 12), (int) (y + 19), ColorUtil.withAlpha(theme.accent.color(), 170));
         if (theme.logo.get()) PrismLogo.draw(ctx, x + 15, y + 12.5f, 15, theme.logoSpeed.getFloat(), alpha);
         // the logo (added after the search hit, so it wins): About - version, channel and build details
-        hits.add(new Hit(x + 2, y + 1, 26, 22, (b, cx, cy) -> minecraft.setScreen(new AboutScreen(this)), null, "About Prism (version, build, debug info)"));
+        hits.add(new Hit(x + 2, y + 1, 26, 22, (b, cx, cy) -> minecraft.gui.setScreen(new AboutScreen(this)), null, "About Prism (version, build, debug info)"));
         ctx.text(tr, label, (int) (x + 30), (int) (y + 8), search.isEmpty() ? DIM : TEXT, false);
         drawConfigBar(ctx, width / 2f + GAP / 2f, y, alpha);
     }
@@ -287,7 +287,7 @@ public class ClickGuiScreen extends Screen {
             ctx.text(font, labels[i], (int) (sx + 10), (int) (y + 8), active ? TEXT : DIM, active);
             boolean hudButton = labels[i].equals("HUD");
             Click action = target != null ? (b, cx, cy) -> openMenu(menu == target ? Menu.NONE : target)
-                : hudButton ? (b, cx, cy) -> openHudEditor() : (b, cx, cy) -> minecraft.setScreen(new AccountsScreen(this));
+                : hudButton ? (b, cx, cy) -> openHudEditor() : (b, cx, cy) -> minecraft.gui.setScreen(new AccountsScreen(this));
             hits.add(new Hit(sx, y, sw, barH, action, null, tips[i]));
             if (i > 0) fill(ctx, (int) sx, (int) (y + 6), (int) sx + 1, (int) (y + barH - 6), FAINT);
             sx += sw;
@@ -300,7 +300,7 @@ public class ClickGuiScreen extends Screen {
             moduleFlashAt = System.currentTimeMillis();
             return;
         }
-        minecraft.setScreen(new HudEditorScreen(this));
+        minecraft.gui.setScreen(new HudEditorScreen(this));
     }
 
     // ---- list editor (ListSetting) --------------------------------------------------------------------
@@ -614,7 +614,7 @@ public class ClickGuiScreen extends Screen {
             () -> { Prism.config().save(); flash("Saved " + Prism.config().getActive()); },
             () -> flash(Prism.config().loadProfile(Prism.config().getActive()) ? "Reloaded " + Prism.config().getActive() : "Nothing saved yet"),
             () -> { resetLayout(); flash("Layout reset"); },
-            () -> net.minecraft.util.Util.getPlatform().openPath(Prism.config().folder()),
+            () -> com.mojang.blaze3d.Blaze3D.openPath(Prism.config().folder()),
             () -> {
                 try {
                     minecraft.keyboardHandler.setClipboard(Prism.config().exportCode(Prism.config().getActive()));
@@ -628,7 +628,7 @@ public class ClickGuiScreen extends Screen {
                     flash("Imported as " + n);
                 } catch (Exception e) { flash("Clipboard has no Prism code"); }
             },
-            () -> minecraft.setScreen(new ChangelogScreen(this)),
+            () -> minecraft.gui.setScreen(new ChangelogScreen(this)),
             this::openHudEditor,
         };
         float bw = (w - 4) / 2f, bh = 16;
@@ -1053,7 +1053,7 @@ public class ClickGuiScreen extends Screen {
             event = holoEvent(event);
         }
         double mx = event.x(), my = event.y();
-        int button = event.button();
+        int button = KeyUtil.legacyButton(event.button()); // hit handlers use 0 left / 1 right / 2 middle
         if (numEditing != null) commitNum();
         if (listEditing != null) {
             // modal: only the editor's own hits (and the outside-click catcher) count
@@ -1064,7 +1064,7 @@ public class ClickGuiScreen extends Screen {
             return true;
         }
         if (listening != null) {
-            if (button >= 2) { listening.set(KeyUtil.MOUSE_OFFSET + button); listening = null; return true; }
+            if (KeyUtil.isBindableMouse(event.button())) { listening.set(KeyUtil.mouse(event.button())); listening = null; return true; }
             listening = null;
         }
         editing = null;
@@ -1137,69 +1137,69 @@ public class ClickGuiScreen extends Screen {
         int key = event.key();
         if (listEditing != null) {
             switch (key) {
-                case GLFW.GLFW_KEY_BACKSPACE -> { if (!listInput.isEmpty()) listInput = listInput.substring(0, listInput.length() - 1); }
-                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> submitListInput();
-                case GLFW.GLFW_KEY_TAB -> { List<String> sg = suggestions(listEditing); if (!sg.isEmpty()) listInput = sg.get(0); }
-                case GLFW.GLFW_KEY_ESCAPE -> { if (!listInput.isEmpty()) listInput = ""; else closeList(); }
+                case InputConstants.KEY_BACKSPACE -> { if (!listInput.isEmpty()) listInput = listInput.substring(0, listInput.length() - 1); }
+                case InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> submitListInput();
+                case InputConstants.KEY_TAB -> { List<String> sg = suggestions(listEditing); if (!sg.isEmpty()) listInput = sg.get(0); }
+                case InputConstants.KEY_ESCAPE -> { if (!listInput.isEmpty()) listInput = ""; else closeList(); }
                 default -> {}
             }
             return true;
         }
         if (listening != null) {
-            if (key == GLFW.GLFW_KEY_ESCAPE) listening = null;
+            if (key == InputConstants.KEY_ESCAPE) listening = null;
             else {
-                listening.set(key == GLFW.GLFW_KEY_BACKSPACE || key == GLFW.GLFW_KEY_DELETE ? KeyUtil.NONE : key);
+                listening.set(key == InputConstants.KEY_BACKSPACE || key == InputConstants.KEY_DELETE ? KeyUtil.NONE : key);
                 listening = null;
             }
             return true;
         }
         if (numEditing != null) {
             switch (key) {
-                case GLFW.GLFW_KEY_BACKSPACE -> {
+                case InputConstants.KEY_BACKSPACE -> {
                     if (numFresh) numInput = "";
                     else if (!numInput.isEmpty()) numInput = numInput.substring(0, numInput.length() - 1);
                     numFresh = false;
                 }
-                case GLFW.GLFW_KEY_DELETE -> { numInput = ""; numFresh = false; }
-                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> commitNum();
-                case GLFW.GLFW_KEY_ESCAPE -> numEditing = null; // cancel: value unchanged
+                case InputConstants.KEY_DELETE -> { numInput = ""; numFresh = false; }
+                case InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> commitNum();
+                case InputConstants.KEY_ESCAPE -> numEditing = null; // cancel: value unchanged
                 default -> {}
             }
             return true;
         }
         if (editing != null) {
             switch (key) {
-                case GLFW.GLFW_KEY_BACKSPACE -> { String v = editing.get(); if (!v.isEmpty()) editing.set(v.substring(0, v.length() - 1)); }
-                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_ESCAPE -> editing = null;
+                case InputConstants.KEY_BACKSPACE -> { String v = editing.get(); if (!v.isEmpty()) editing.set(v.substring(0, v.length() - 1)); }
+                case InputConstants.KEY_RETURN, InputConstants.KEY_ESCAPE -> editing = null;
                 default -> {}
             }
             return true;
         }
         if (newProfile != null) {
             switch (key) {
-                case GLFW.GLFW_KEY_BACKSPACE -> { if (!newProfile.isEmpty()) newProfile = newProfile.substring(0, newProfile.length() - 1); }
-                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> createProfile();
-                case GLFW.GLFW_KEY_ESCAPE -> newProfile = null;
+                case InputConstants.KEY_BACKSPACE -> { if (!newProfile.isEmpty()) newProfile = newProfile.substring(0, newProfile.length() - 1); }
+                case InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> createProfile();
+                case InputConstants.KEY_ESCAPE -> newProfile = null;
                 default -> {}
             }
             return true;
         }
-        if (key == GLFW.GLFW_KEY_ESCAPE && menu != Menu.NONE) { openMenu(Menu.NONE); return true; }
+        if (key == InputConstants.KEY_ESCAPE && menu != Menu.NONE) { openMenu(Menu.NONE); return true; }
         if (searchFocused) {
             lastSearchInput = System.currentTimeMillis();
             switch (key) {
-                case GLFW.GLFW_KEY_BACKSPACE -> { if (!search.isEmpty()) search = search.substring(0, search.length() - 1); }
-                case GLFW.GLFW_KEY_ESCAPE -> { search = ""; searchFocused = false; }
-                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> searchFocused = false;
+                case InputConstants.KEY_BACKSPACE -> { if (!search.isEmpty()) search = search.substring(0, search.length() - 1); }
+                case InputConstants.KEY_ESCAPE -> { search = ""; searchFocused = false; }
+                case InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> searchFocused = false;
                 default -> {}
             }
             return true;
         }
-        if (key == GLFW.GLFW_KEY_ESCAPE && !search.isEmpty()) { search = ""; return true; }
+        if (key == InputConstants.KEY_ESCAPE && !search.isEmpty()) { search = ""; return true; }
         boolean justOpened = System.currentTimeMillis() - openedAt < 150;
-        if (!justOpened && (key == theme.bind.get() || key == GLFW.GLFW_KEY_ESCAPE)) { onClose(); return true; }
+        if (!justOpened && (key == theme.bind.get() || key == InputConstants.KEY_ESCAPE)) { onClose(); return true; }
         // search isn't focused: the key is a module bind, same as in game
-        if (!justOpened && key != GLFW.GLFW_KEY_ESCAPE) { Prism.modules().onKey(key, true); return true; }
+        if (!justOpened && key != InputConstants.KEY_ESCAPE) { Prism.modules().onKey(key, true); return true; }
         return super.keyPressed(event);
     }
 
@@ -1252,20 +1252,18 @@ public class ClickGuiScreen extends Screen {
         "BWWWWWWBBBBB", "BWWWBWWB", "BWWBBWWB", "BWB BWWB", "BB   BWWB", "B    BWWB", "      BWWB", "       BB"};
 
     private void updateCursor() {
-        long handle = minecraft.getWindow().handle();
+        var window = minecraft.getWindow();
         if (dev.prismglass.gui.render.Holo.capturing()) {
             // head-steer (only while the panel is really drawn; otherwise the flat GUI keeps a free mouse): lock the cursor directly (NOT grabMouse(), which calls setScreen(null) and closes us);
             // MouseMixin turns the head from the raw movement, and our arrow is drawn on the panel
-            if (GLFW.glfwGetInputMode(handle, GLFW.GLFW_CURSOR) != GLFW.GLFW_CURSOR_DISABLED)
-                GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+            KeyUtil.setCursorLocked(window, true);
             cursorHidden = false;
             holoLocked = true;
             return;
         }
         releaseHoloLock(); // PopOut off, or the panel can't be drawn: flat GUI, free mouse
         if (dev.prismglass.streamproof.Overlay.wantsSoftCursor()) {
-            if (GLFW.glfwGetInputMode(handle, GLFW.GLFW_CURSOR) != GLFW.GLFW_CURSOR_HIDDEN)
-                GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+            KeyUtil.setCursorHidden(true);
             cursorHidden = true;
         } else restoreCursor();
     }
@@ -1278,16 +1276,14 @@ public class ClickGuiScreen extends Screen {
         if (!holoLocked) return;
         holoLocked = false;
         var window = minecraft.getWindow();
-        GLFW.glfwSetInputMode(window.handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
-        GLFW.glfwSetCursorPos(window.handle(), window.getScreenWidth() / 2.0, window.getScreenHeight() / 2.0);
+        KeyUtil.setCursorNormal(window);
+        KeyUtil.warpCursor(window, window.getScreenWidth() / 2.0, window.getScreenHeight() / 2.0);
     }
 
     private void restoreCursor() {
         if (!cursorHidden) return;
         cursorHidden = false;
-        long handle = minecraft.getWindow().handle();
-        if (GLFW.glfwGetInputMode(handle, GLFW.GLFW_CURSOR) == GLFW.GLFW_CURSOR_HIDDEN)
-            GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        KeyUtil.setCursorHidden(false);
     }
 
     /** Drawn in screen pixels at the exact (sub-GUI-pixel) mouse position, on top of everything. */

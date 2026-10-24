@@ -43,7 +43,7 @@ public class AutoCity extends Module {
                 Direction face = BlockUtil.breakFace(mining);
                 if (face == null || !BlockUtil.readyToDig(mining, 90)) return;
                 mc.player.connection.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, mining, face));
-                mc.player.swing(InteractionHand.MAIN_HAND);
+                dev.prismglass.util.SwingUtil.punch();
                 startedAt = System.currentTimeMillis() + 2000; // give the server time; retry if it's still there
             }
             return;
@@ -65,7 +65,7 @@ public class AutoCity extends Module {
             if (face == null) continue;
             if (!BlockUtil.readyToDig(block, 90)) return; // wait for the rotation before starting
             mc.player.connection.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, block, face));
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.punch();
             mining = block;
             miningFace = face;
             startedAt = System.currentTimeMillis();

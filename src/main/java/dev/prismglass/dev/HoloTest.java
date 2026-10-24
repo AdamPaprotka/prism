@@ -24,7 +24,8 @@ import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
+import dev.prismglass.util.KeyUtil;
 
 /**
  * Dev only (-Pholotest): ClickGUI PopOut hologram. Opens the GUI in a flat world, aims the crosshair at rows of the
@@ -65,7 +66,7 @@ public final class HoloTest {
     }
 
     private static void shot(String name) {
-        net.minecraft.client.Screenshot.grab(mc.gameDirectory, name, mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+        net.minecraft.client.Screenshot.grab(mc.gameDirectory, name, mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
     }
 
     private static void invoke(String name, Class<?>[] types, Object... args) {
@@ -78,21 +79,26 @@ public final class HoloTest {
         }
     }
 
-    /** A real GLFW mouse button callback (what clicking does). */
+    /** A real mouse button callback (what clicking does). */
     private static void button(int button, int action) {
         invoke("onButton", new Class<?>[]{long.class, MouseButtonInfo.class, int.class}, mc.getWindow().handle(), new MouseButtonInfo(button, 0), action);
     }
 
     private static void click(int button) {
-        button(button, GLFW.GLFW_PRESS);
-        button(button, GLFW.GLFW_RELEASE);
+        button(button, InputConstants.PRESS);
+        button(button, InputConstants.RELEASE);
     }
 
+    private static double lastMoveX = Double.NaN, lastMoveY;
+
+    /** SDL motion events carry the relative delta too; derive it from the previous synthetic position. */
     private static void move(double x, double y) {
-        invoke("onMove", new Class<?>[]{long.class, double.class, double.class}, mc.getWindow().handle(), x, y);
+        double dx = Double.isNaN(lastMoveX) ? 0 : x - lastMoveX, dy = Double.isNaN(lastMoveX) ? 0 : y - lastMoveY;
+        lastMoveX = x; lastMoveY = y;
+        invoke("onMove", new Class<?>[]{long.class, double.class, double.class, double.class, double.class}, mc.getWindow().handle(), x, y, dx, dy);
     }
 
-    private static ClickGuiScreen gui() { return mc.screen instanceof ClickGuiScreen g ? g : null; }
+    private static ClickGuiScreen gui() { return mc.gui.screen() instanceof ClickGuiScreen g ? g : null; }
 
     /** Turn the head so the crosshair sits on GUI point (gx, gy) of the panel. */
     private static void aim(double gx, double gy) {
@@ -115,7 +121,10 @@ public final class HoloTest {
         return String.format(Locale.ROOT, "%.1f,%.1f", c[0], c[1]);
     }
 
-    private static int cursorMode() { return GLFW.glfwGetInputMode(mc.getWindow().handle(), GLFW.GLFW_CURSOR); }
+    private static final int CURSOR_NORMAL = 0, CURSOR_HIDDEN = 1, CURSOR_DISABLED = 2; // the old GLFW_CURSOR modes, from SDL state
+    private static int cursorMode() {
+        return KeyUtil.cursorLocked(mc.getWindow()) ? CURSOR_DISABLED : KeyUtil.cursorHidden() ? CURSOR_HIDDEN : CURSOR_NORMAL;
+    }
 
     private static void tick() {
         ticks++;
@@ -129,7 +138,7 @@ public final class HoloTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         ClickGui theme = Prism.modules().get(ClickGui.class);
@@ -154,7 +163,7 @@ public final class HoloTest {
         }
         if (t == 45) {
             check("ClickGUI open with PopOut active", gui() != null && Holo.active());
-            check("OS cursor locked while popped out", cursorMode() == GLFW.GLFW_CURSOR_DISABLED);
+            check("OS cursor locked while popped out", cursorMode() == CURSOR_DISABLED);
             check("capture target exists, panel live", Holo.target != null && Holo.live());
             if (SP) {
                 check("StreamProof overlay active", dev.prismglass.streamproof.Overlay.active());
@@ -184,11 +193,11 @@ public final class HoloTest {
         if (t == 53) {
             check("crosshair maps onto the module row (cursor " + cursor() + ")", onRect(gui().debugRect(mod)));
             modBefore = mod.isEnabled();
-            click(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            click(InputConstants.MOUSE_BUTTON_LEFT);
         }
         if (t == 55) check("left click through the hologram toggled " + mod.getName(), mod.isEnabled() != modBefore);
         if (t == 58) shot("prism-holo-click.png");
-        if (t == 60) click(GLFW.GLFW_MOUSE_BUTTON_RIGHT); // expand settings
+        if (t == 60) click(InputConstants.MOUSE_BUTTON_RIGHT); // expand settings
         if (t == 75) {
             for (Setting<?> st : mod.getSettings()) {
                 if (!st.isVisible() || gui().debugRect(st) == null) continue;
@@ -200,18 +209,18 @@ public final class HoloTest {
         }
         if (t == 78 && bool != null) {
             boolBefore = bool.get();
-            click(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            click(InputConstants.MOUSE_BUTTON_LEFT);
         }
         if (t == 80 && bool != null) check("bool setting " + bool.getName() + " toggled via hologram", bool.get() != boolBefore);
         if (t == 82 && num != null) aimAt(gui().debugRect(num), 0.15);
         if (t == 85 && num != null) {
             numBefore = num.get();
-            button(GLFW.GLFW_MOUSE_BUTTON_LEFT, GLFW.GLFW_PRESS); // grab the slider near its left end
+            button(InputConstants.MOUSE_BUTTON_LEFT, InputConstants.PRESS); // grab the slider near its left end
         }
         if (t == 87 && num != null) aimAt(gui().debugRect(num), 0.85); // sweep the head right while holding
         if (t == 90 && num != null) {
             double mid = num.get();
-            button(GLFW.GLFW_MOUSE_BUTTON_LEFT, GLFW.GLFW_RELEASE);
+            button(InputConstants.MOUSE_BUTTON_LEFT, InputConstants.RELEASE);
             double lo = num.getMin() + (num.getMax() - num.getMin()) * 0.6;
             check(String.format(Locale.ROOT, "slider %s dragged by head movement (%.3f -> %.3f, want > %.3f)", num.getName(), numBefore, mid, lo), mid > lo);
             shot("prism-holo-settings.png");
@@ -233,7 +242,7 @@ public final class HoloTest {
                 Holo.base().distanceTo(anchorAt) < 1e-9);
             check("crosshair off the panel -> no cursor (" + cursor() + ")", Double.isNaN(gui().debugHoloCursor()[0]));
             boolean before = mod.isEnabled();
-            click(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            click(InputConstants.MOUSE_BUTTON_LEFT);
             check("clicks off the panel do nothing", mod.isEnabled() == before && gui() != null);
             shot("prism-holo-away.png");
         }
@@ -259,15 +268,15 @@ public final class HoloTest {
             check("HoloFace: after walking aside the panel faces us (dot " + String.format(Locale.ROOT, "%.3f", dot) + ")", dot > 0.98);
             check("HoloFace tweens: it was still turning right after the step (max " + String.format(Locale.ROOT, "%.1f", maxTurnLeft) + " deg left)", maxTurnLeft > 3);
         }
-        if (t == 118) mc.setScreen(new AboutScreen(gui())); // close into another screen
+        if (t == 118) mc.gui.setScreen(new AboutScreen(gui())); // close into another screen
         if (t == 121) {
-            check("closing into another screen unlocks the mouse", cursorMode() == GLFW.GLFW_CURSOR_NORMAL);
+            check("closing into another screen unlocks the mouse", cursorMode() == CURSOR_NORMAL);
             check("hologram inactive outside the ClickGUI", !Holo.active() && !Holo.steering());
             float yaw = mc.player.getYRot();
             move(1200, 500);
             move(1300, 500);
             check("mouse no longer turns the head", mc.player.getYRot() == yaw);
-            mc.setScreen(new ClickGuiScreen());
+            mc.gui.setScreen(new ClickGuiScreen());
         }
         if (t == 122) { Holo.testHold = true; run(s, "tp @p -3.5 -60 -1.5"); } // step aside while holding Shift
         if (t == 127) {
@@ -277,15 +286,15 @@ public final class HoloTest {
         }
         if (t == 128) {
             check("Shift released: it turns again (" + String.format(Locale.ROOT, "%.1f -> %.1f", heldErr, Holo.yawErrorDeg()) + " deg)", Holo.yawErrorDeg() < heldErr - 1);
-            check("reopened: popped out again", Holo.live() && cursorMode() == GLFW.GLFW_CURSOR_DISABLED);
-            mc.setScreen(null); // close into the game
+            check("reopened: popped out again", Holo.live() && cursorMode() == CURSOR_DISABLED);
+            mc.gui.setScreen(null); // close into the game
         }
         if (t == 132) {
-            check("closed into the game: no hologram, screen null", mc.screen == null && !Holo.active());
+            check("closed into the game: no hologram, screen null", mc.gui.screen() == null && !Holo.active());
             boolean grabbed = mc.mouseHandler.isMouseGrabbed();
             log("window active " + mc.isWindowActive() + ", vanilla grabbed " + grabbed);
             check("mouse handed back to vanilla (cursor mode matches vanilla's grab state)",
-                cursorMode() == (grabbed ? GLFW.GLFW_CURSOR_DISABLED : GLFW.GLFW_CURSOR_NORMAL));
+                cursorMode() == (grabbed ? CURSOR_DISABLED : CURSOR_NORMAL));
             shot("prism-holo-closed.png");
             if (mod.isEnabled() != modBefore) mod.toggle();
             if (bool != null && bool.get() != boolBefore) bool.toggle();
@@ -294,16 +303,16 @@ public final class HoloTest {
         // fallback: the world hook doesn't run (some other mod in the way) -> normal flat ClickGUI, free mouse
         if (t == 140) {
             Holo.debugNoWorld = true;
-            mc.setScreen(new ClickGuiScreen());
+            mc.gui.setScreen(new ClickGuiScreen());
         }
         if (t == 148) {
             check("no world hook: flat ClickGUI, not popped out", gui() != null && !Holo.live() && !Holo.capturing() && !Holo.steering());
-            check("no world hook: mouse stays free (not locked)", cursorMode() != GLFW.GLFW_CURSOR_DISABLED);
+            check("no world hook: mouse stays free (not locked)", cursorMode() != CURSOR_DISABLED);
             check("no world hook: no hologram cursor", Double.isNaN(gui().debugHoloCursor()[0]));
             shot("prism-holo-fallback.png");
         }
         if (t == 152) {
-            mc.setScreen(null);
+            mc.gui.setScreen(null);
             Holo.debugNoWorld = false;
             theme.popOut.set(false);
             theme.holoSway.set(true);

@@ -134,13 +134,13 @@ public class DamageAILearn extends Service {
         OpponentProfile p = profile(l.name);
         var me = mc.player;
         // their swings, and the gaps between them
-        if (e.swinging && !l.wasSwinging) {
+        if (e.isSwinging() && !l.wasSwinging) {
             long gap = tick - l.lastSwing;
             if (gap > 1 && gap < 60 && me.distanceTo(e) < 6) p.swingGap.add(gap);
             l.lastSwing = tick;
             l.falling = !e.onGround() && e.getDeltaMovement().y < 0;
         }
-        l.wasSwinging = e.swinging;
+        l.wasSwinging = e.isSwinging();
         // their health dropping right after we hit them: our damage
         float hp = e.getHealth() + e.getAbsorptionAmount();
         if (l.lastHealth >= 0 && hp < l.lastHealth - 0.01f && tick - l.lastOurAttack <= 6) {

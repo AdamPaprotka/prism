@@ -55,10 +55,10 @@ public class InventoryTweaks extends Module {
     @Override
     public void onTick() {
         boolean down = KeyUtil.isDown(sortKey.get());
-        if (down && !sortWasDown && mc.screen instanceof AbstractContainerScreen<?> s) startSort(((dev.prismglass.mixin.ContainerScreenAccessor) s).prism$hoveredSlot());
+        if (down && !sortWasDown && mc.gui.screen() instanceof AbstractContainerScreen<?> s) startSort(((dev.prismglass.mixin.ContainerScreenAccessor) s).prism$hoveredSlot());
         sortWasDown = down;
         if (sorting != null) { sortStep(); return; }
-        if (autoDrop.get() && (mc.screen == null || mc.screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen)) dropJunk();
+        if (autoDrop.get() && (mc.gui.screen() == null || mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen)) dropJunk();
     }
 
     /** Sorts the inventory this slot belongs to (your main inventory for any of your own slots). */

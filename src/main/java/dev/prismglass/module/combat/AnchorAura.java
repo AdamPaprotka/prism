@@ -72,7 +72,7 @@ public class AnchorAura extends Module {
         if (prev != slot && !Prism.guard().canSwitchSlot()) return;
         InvUtil.swap(slot, false);
         mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, Direction.UP, pos, false));
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
         InvUtil.restore(prev);
     }
 }

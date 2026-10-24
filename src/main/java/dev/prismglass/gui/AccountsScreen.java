@@ -14,7 +14,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 /**
  * Account manager (ClickGUI "Accounts" or {@code .account}): cracked names you can log in with for offline-mode
@@ -111,7 +111,7 @@ public class AccountsScreen extends Screen {
         button(ctx, "Original", x + 14, by, btnW, 16, mouseX, mouseY, () -> { am.loginOriginal(); flash("Back to " + am.originalName()); });
         button(ctx, "Random", x + 14 + btnW + gap, by, btnW, 16, mouseX, mouseY, () -> { input = AccountManager.randomName(); inputFocused = true; });
         var px = Prism.proxies().active();
-        button(ctx, px == null ? "Proxies" : "Proxy: " + px.name(), x + 14 + 2 * (btnW + gap), by, btnW, 16, mouseX, mouseY, () -> minecraft.setScreen(new ProxiesScreen(this)));
+        button(ctx, px == null ? "Proxies" : "Proxy: " + px.name(), x + 14 + 2 * (btnW + gap), by, btnW, 16, mouseX, mouseY, () -> minecraft.gui.setScreen(new ProxiesScreen(this)));
         button(ctx, "Done", x + 14 + 3 * (btnW + gap), by, btnW, 16, mouseX, mouseY, this::onClose);
         if (flash != null && System.currentTimeMillis() - flashAt < 2500) {
             String f = font.plainSubstrByWidth(flash, (int) w - 28);
@@ -153,11 +153,11 @@ public class AccountsScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
-        if (key == GLFW.GLFW_KEY_ESCAPE) { onClose(); return true; }
+        if (key == InputConstants.KEY_ESCAPE) { onClose(); return true; }
         if (!inputFocused) return super.keyPressed(event);
         switch (key) {
-            case GLFW.GLFW_KEY_BACKSPACE -> { if (!input.isEmpty()) input = input.substring(0, input.length() - 1); }
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> add();
+            case InputConstants.KEY_BACKSPACE -> { if (!input.isEmpty()) input = input.substring(0, input.length() - 1); }
+            case InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> add();
             default -> {}
         }
         return true;
@@ -171,5 +171,5 @@ public class AccountsScreen extends Screen {
         return true;
     }
 
-    @Override public void onClose() { minecraft.setScreen(parent); }
+    @Override public void onClose() { minecraft.gui.setScreen(parent); }
 }

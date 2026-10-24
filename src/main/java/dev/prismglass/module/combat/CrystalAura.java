@@ -23,6 +23,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.item.Items;
@@ -210,7 +211,7 @@ public class CrystalAura extends Module {
         if (slot != -1) InvUtil.swap(slot, false);
         dbgPlaces++;
         mc.gameMode.useItemOn(mc.player, hand, new BlockHitResult(hitVec, face, best, false));
-        mc.player.swing(hand);
+        dev.prismglass.util.SwingUtil.use(hand);
         if (slot != -1 && !swap.is("Normal")) InvUtil.restore(prev);
         placeTicks = 0;
     }
@@ -259,7 +260,7 @@ public class CrystalAura extends Module {
 
     @Override
     public void onPacketReceive(PacketEvent event) {
-        if (!instantBreak.get() || !(event.packet instanceof ClientboundAddEntityPacket spawn) || spawn.getType() != EntityType.END_CRYSTAL) return;
+        if (!instantBreak.get() || !(event.packet instanceof ClientboundAddEntityPacket spawn) || spawn.getType() != EntityTypes.END_CRYSTAL) return;
         mc.execute(() -> {
             Entity e = mc.level == null ? null : mc.level.getEntity(spawn.getId());
             if (e != null && target != null && RotationUtil.distanceTo(e) <= Prism.anticheat().range(breakRange.get()) && hitCrystal(e)) {

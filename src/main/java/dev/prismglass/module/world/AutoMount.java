@@ -35,7 +35,7 @@ public class AutoMount extends Module {
     public void onTick() {
         if (cooldown > 0) { cooldown--; return; }
         var p = mc.player;
-        if (p.isPassenger() || p.input.keyPresses.shift() || mc.screen != null) return;
+        if (p.isPassenger() || p.input.keyPresses.shift() || mc.gui.screen() != null) return;
         Entity best = null;
         double bestDist = Double.MAX_VALUE;
         for (Entity e : mc.level.entitiesForRendering()) {

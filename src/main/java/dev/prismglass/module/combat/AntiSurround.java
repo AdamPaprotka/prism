@@ -107,7 +107,7 @@ public class AntiSurround extends Module {
         if (!Prism.guard().canPlace()) return;
         if (slot != -1) InvUtil.swap(slot, false);
         mc.gameMode.useItemOn(mc.player, hand, new BlockHitResult(hitVec, face, base, false));
-        mc.player.swing(hand);
+        dev.prismglass.util.SwingUtil.use(hand);
         if (slot != -1) InvUtil.restore(prev);
         rendered = base;
         renderTicks = 10;

@@ -49,7 +49,7 @@ public final class MovementHooks {
      * The ClickGUI isn't a container, so the server sees ordinary movement.
      */
     private static void guiWalk(ClientInput input) {
-        if (!(mc.screen instanceof dev.prismglass.gui.ClickGuiScreen gui) || gui.capturesKeys()) return;
+        if (!(mc.gui.screen() instanceof dev.prismglass.gui.ClickGuiScreen gui) || gui.capturesKeys()) return;
         var theme = Prism.modules().get(dev.prismglass.module.client.ClickGui.class);
         if (theme == null || !theme.walk.get()) return;
         var o = mc.options;
@@ -63,8 +63,8 @@ public final class MovementHooks {
 
     private static boolean held(net.minecraft.client.KeyMapping mapping) {
         var key = mapping.key;
-        if (key.getType() != com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM) return false;
-        return com.mojang.blaze3d.platform.InputConstants.isKeyDown(mc.getWindow(), key.getValue());
+        if (key.getType() != com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD) return false;
+        return dev.prismglass.util.KeyUtil.isKeyDown(key.getValue());
     }
 
     /** Press jump for one tick through real input (Criticals Jump mode). */

@@ -48,7 +48,7 @@ public class NoElyBreak extends Module {
         switch (state) {
             case IDLE -> {
                 ItemStack elytra = p.getItemBySlot(EquipmentSlot.CHEST);
-                if (!p.isFallFlying() || p.getFallFlyingTicks() < threshold(elytra) || mc.screen != null) return;
+                if (!p.isFallFlying() || p.getFallFlyingTicks() < threshold(elytra) || mc.gui.screen() != null) return;
                 if (!LivingEntity.canGlideUsing(elytra, EquipmentSlot.CHEST)) return;
                 if (nearGround()) return;
                 slot = InvUtil.findInventory(NoElyBreak::isChestplate);

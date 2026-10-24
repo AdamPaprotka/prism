@@ -79,7 +79,7 @@ public class SpamDupe extends Module {
     public void onDisable() {
         target = 0;
         if (mc.player == null) return;
-        if (chest != null && mc.screen != null) mc.player.closeContainer();
+        if (chest != null && mc.gui.screen() != null) mc.player.closeContainer();
         ChatUtil.info("SpamDupe: " + cycles + " cycles");
     }
 
@@ -90,7 +90,7 @@ public class SpamDupe extends Module {
         // count reached: never start another dupe, but finish the current one so you end with exactly one
         if (cycles >= target && (phase == Phase.DUPE || phase == Phase.PAUSE)) { toggle(); return; }
         boolean storing = phase == Phase.OPEN || phase == Phase.STORE;
-        if (mc.screen != null && !storing) return; // the clicks below assume the player inventory menu
+        if (mc.gui.screen() != null && !storing) return; // the clicks below assume the player inventory menu
         if (wait > 0) { wait--; return; }
         if (mc.level.getEntitiesOfClass(ItemEntity.class, new AABB(mc.player.blockPosition()).inflate(16)).size() > maxNearby.getInt()) {
             ChatUtil.error("SpamDupe: " + maxNearby.getInt() + "+ items around you, stopping");
@@ -208,7 +208,7 @@ public class SpamDupe extends Module {
 
     private AbstractContainerMenu storeMenu() {
         AbstractContainerMenu m = mc.player.containerMenu;
-        return mc.screen != null && (m instanceof ChestMenu || m instanceof ShulkerBoxMenu) ? m : null;
+        return mc.gui.screen() != null && (m instanceof ChestMenu || m instanceof ShulkerBoxMenu) ? m : null;
     }
 
     private boolean chestHasRoom(AbstractContainerMenu menu) { return freeChestSlot(menu) != -1; }
@@ -231,7 +231,7 @@ public class SpamDupe extends Module {
             boolean box = be instanceof ChestBlockEntity || be instanceof BarrelBlockEntity
                 || (be instanceof ShulkerBoxBlockEntity && !(template.getItem() instanceof net.minecraft.world.item.BlockItem bi && bi.getBlock() instanceof net.minecraft.world.level.block.ShulkerBoxBlock));
             if (!box || fullChests.contains(p) || !BlockUtil.inPlaceRange(p)) continue;
-            double d = mc.player.getEyePosition().distanceToSqr(p.getCenter());
+            double d = mc.player.getEyePosition().distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(p));
             if (d < bestD) { bestD = d; best = p.immutable(); }
         }
         return best;
@@ -267,5 +267,5 @@ public class SpamDupe extends Module {
     public int cycles() { return cycles; }
 
     /** Dev checks. */
-    public String debug() { return phase + " chest=" + chest + " full=" + fullChests.size() + " openWait=" + openWait + " wait=" + wait + " screen=" + mc.screen + " count=" + count() + " carried=" + mc.player.containerMenu.getCarried() + " menu=" + mc.player.containerMenu.getClass().getSimpleName() + " room=" + (storeMenu() != null && chestHasRoom(storeMenu())); }
+    public String debug() { return phase + " chest=" + chest + " full=" + fullChests.size() + " openWait=" + openWait + " wait=" + wait + " screen=" + mc.gui.screen() + " count=" + count() + " carried=" + mc.player.containerMenu.getCarried() + " menu=" + mc.player.containerMenu.getClass().getSimpleName() + " room=" + (storeMenu() != null && chestHasRoom(storeMenu())); }
 }

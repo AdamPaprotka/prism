@@ -132,10 +132,10 @@ public abstract class GuiRendererMixin {
         }
         if (draws.isEmpty()) return;
         Minecraft minecraft = Minecraft.getInstance();
-        WindowRenderState windowState = minecraft.gameRenderer.getGameRenderState().windowRenderState;
+        WindowRenderState windowState = minecraft.gameRenderer.gameRenderState().windowRenderState;
         guiProjection.setupOrtho(1000.0F, 11000.0F, (float) windowState.width / windowState.guiScale, (float) windowState.height / windowState.guiScale, true);
         RenderSystem.setProjectionMatrix(guiProjectionMatrixBuffer.getBuffer(guiProjection), ProjectionType.ORTHOGRAPHIC);
-        RenderTarget main = minecraft.getMainRenderTarget();
+        RenderTarget main = minecraft.gameRenderer.mainRenderTarget();
         int maxIndexCount = 0;
         for (Object draw : draws) maxIndexCount = Math.max(maxIndexCount, ((GuiDrawAccessor) draw).prism$indexCount());
         RenderSystem.AutoStorageIndexBuffer autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);

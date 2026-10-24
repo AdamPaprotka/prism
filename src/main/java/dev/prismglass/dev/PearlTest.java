@@ -47,7 +47,7 @@ public final class PearlTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         MinecraftServer s = mc.getSingleplayerServer();
         PearlPredict pp = Prism.modules().get(PearlPredict.class);
@@ -62,7 +62,7 @@ public final class PearlTest {
             pp.setEnabled(true);
             pp.autoPearl.set(true);
             run(s, "item replace entity @p hotbar.3 with ender_pearl 16");
-            if (mc.screen != null) mc.setScreen(null);
+            if (mc.gui.screen() != null) mc.gui.setScreen(null);
             phase = 0;
             wait = 40;
         }

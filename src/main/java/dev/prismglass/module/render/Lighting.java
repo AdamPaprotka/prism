@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
 
@@ -48,7 +49,7 @@ public class Lighting extends Module {
                 var state = level.getBlockState(pos);
                 if (!state.getCollisionShape(level, pos).isEmpty() || !state.getFluidState().isEmpty()) continue;
                 below.setWithOffset(pos, 0, -1, 0);
-                if (!level.getBlockState(below).isValidSpawn(level, below, EntityType.ZOMBIE)) continue;
+                if (!level.getBlockState(below).isValidSpawn(level, below, EntityTypes.ZOMBIE)) continue;
                 above.setWithOffset(pos, 0, 1, 0);
                 if (!level.getBlockState(above).getCollisionShape(level, above).isEmpty()) continue;
                 if (level.getBrightness(LightLayer.BLOCK, pos) > 0) continue;

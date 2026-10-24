@@ -88,7 +88,7 @@ public final class Holo {
     /** The ClickGUI is open with PopOut enabled (whether or not the panel could actually be drawn). */
     public static boolean active() {
         ClickGui t = theme();
-        return t != null && t.popOut.get() && mc.screen instanceof ClickGuiScreen && mc.player != null && mc.level != null;
+        return t != null && t.popOut.get() && mc.gui.screen() instanceof ClickGuiScreen && mc.player != null && mc.level != null;
     }
 
     /** Set once the GUI pass has drawn into the target since the panel was opened (no stale frame from last time). */
@@ -118,7 +118,7 @@ public final class Holo {
 
     /** Make/resize the capture target to the window and keep it addressable as TEX_ID. */
     private static void ensureTarget() {
-        var main = mc.getMainRenderTarget();
+        var main = mc.gameRenderer.mainRenderTarget();
         if (target == null) {
             target = new TextureTarget("prism holo", main.width, main.height, true);
             view = RenderSystem.getDevice().createTextureView(target.getColorTexture());
@@ -216,12 +216,9 @@ public final class Holo {
     /** Sneak key or either Shift held: the panel stops turning so you can aim at it steadily. */
     public static boolean held() {
         if (testHold) return true;
-        long h = mc.getWindow().handle();
         var sneak = com.mojang.blaze3d.platform.InputConstants.getKey(mc.options.keyShift.saveString());
-        boolean sneakDown = sneak.getType() == com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM && sneak.getValue() > 0
-            && org.lwjgl.glfw.GLFW.glfwGetKey(h, sneak.getValue()) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-        return sneakDown || org.lwjgl.glfw.GLFW.glfwGetKey(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS
-            || org.lwjgl.glfw.GLFW.glfwGetKey(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        boolean sneakDown = sneak.getType() == com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD && dev.prismglass.util.KeyUtil.isKeyDown(sneak.getValue());
+        return sneakDown || dev.prismglass.util.KeyUtil.shiftDown();
     }
 
     private static double faceYaw;
@@ -268,7 +265,7 @@ public final class Holo {
         if (!anchored) return null;
         ClickGui t = theme();
         double curve = t == null ? 0.1 : t.holoCurve.getFloat();
-        var camera = mc.gameRenderer.getMainCamera();
+        var camera = mc.gameRenderer.mainCamera();
         Vec3 eye = camera.position();
         Vec3 look = Vec3.directionFromRotation(camera.xRot(), camera.yRot()).normalize();
 
@@ -303,7 +300,7 @@ public final class Holo {
         double curve = t == null ? 0.1 : t.holoCurve.getFloat();
         double u = gx / mc.getWindow().getGuiScaledWidth() * 2 - 1, v = 1 - gy / mc.getWindow().getGuiScaledHeight() * 2;
         Vec3 p = aCenter.add(aRight.scale(u * aW / 2)).add(aUp.scale(v * aH / 2)).add(aToward.scale(curve * aW * u * u));
-        Vec3 d = p.subtract(mc.gameRenderer.getMainCamera().position());
+        Vec3 d = p.subtract(mc.gameRenderer.mainCamera().position());
         float yaw = (float) Math.toDegrees(Math.atan2(d.z, d.x)) - 90f;
         float pitch = (float) -Math.toDegrees(Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
         return new float[]{yaw, pitch};
@@ -319,7 +316,7 @@ public final class Holo {
 
     /** ClickGuiScreen, before its first element: from here on the GUI goes to the hologram (the HUD under it stays put). */
     public static void markGui() {
-        if (capturing()) ((dev.prismglass.streamproof.PrismGuiState) mc.gameRenderer.getGameRenderState().guiRenderState).prism$markHolo();
+        if (capturing()) ((dev.prismglass.streamproof.PrismGuiState) mc.gameRenderer.gameRenderState().guiRenderState).prism$markHolo();
     }
 
     /**

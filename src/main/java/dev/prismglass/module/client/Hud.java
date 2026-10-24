@@ -179,7 +179,7 @@ public class Hud extends Module {
 
     @Override
     public void onRender2D(GuiGraphicsExtractor ctx, float delta) {
-        if (mc.options.hideGui && !editing) return;
+        if (mc.gui.hud.isHidden() && !editing) return;
         bounds.clear();
         ClickGui theme = Prism.modules().get(ClickGui.class);
         Glass.Style style = theme.panelStyle();
@@ -450,7 +450,7 @@ public class Hud extends Module {
         float[] p = place("Info", w, h, 4, sh - h - 4, sw, sh);
         float py = p[1];
         // stay above the chat box when it's open and we sit on the bottom edge
-        if (mc.screen instanceof net.minecraft.client.gui.screens.ChatScreen && py + h > sh - 18) py -= 14;
+        if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.ChatScreen && py + h > sh - 18) py -= 14;
         Glass.panel(ctx, p[0], py, w, h, style);
         for (int i = 0; i < lines.size(); i++) ctx.text(mc.font, "§7" + lines.get(i), (int) p[0] + 6, (int) py + 4 + i * 10, 0xFFFFFFFF, true);
     }

@@ -126,7 +126,7 @@ public class AutoTranslate extends Module {
             boolean same = r == null || r.detected().equalsIgnoreCase(tl) || r.text().equalsIgnoreCase(text);
             if (replace) {
                 // the original was held back: show the translation (or the original if nothing changed)
-                if (same) mc.gui.getChat().addClientSystemMessage(message);
+                if (same) mc.gui.hud.getChat().addClientSystemMessage(message);
                 else output(Component.literal("").append(tag(r.detected(), tl)).append(Component.literal(who + r.text())));
             } else if (!same) {
                 output(Component.literal("  ⤷ ").withStyle(ChatFormatting.DARK_GRAY)
@@ -159,7 +159,7 @@ public class AutoTranslate extends Module {
                 while (hiddenLines.size() > 6) hiddenLines.removeFirst();
             }
         } else {
-            mc.gui.getChat().addClientSystemMessage(line);
+            mc.gui.hud.getChat().addClientSystemMessage(line);
         }
     }
 

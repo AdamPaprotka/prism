@@ -50,7 +50,7 @@ public class Flatten extends Module {
             if (skipHoles.get() && isHole(floor.above())) continue;
             spots.add(floor);
         }
-        spots.sort(Comparator.comparingDouble(p -> mc.player.distanceToSqr(p.getCenter())));
+        spots.sort(Comparator.comparingDouble(p -> mc.player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(p))));
         for (BlockPos p : spots) {
             BlockUtil.Result res = BlockUtil.place(p, slot, true, 70);
             if (res == BlockUtil.Result.PLACED) filled++;

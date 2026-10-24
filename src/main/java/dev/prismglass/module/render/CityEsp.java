@@ -47,7 +47,7 @@ public class CityEsp extends Module {
                 BlockPos b = feet.relative(d);
                 if (!cityable(b, d)) continue;
                 blocks.add(b);
-                double dist = mc.player.distanceToSqr(b.getCenter());
+                double dist = mc.player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(b));
                 if (dist < bestDist) { bestDist = dist; closest = b; }
             }
         }

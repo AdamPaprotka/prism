@@ -24,7 +24,7 @@ public final class FullscreenTest {
         GLFW.glfwGetFramebufferSize(h, fw, fh);
         Prism.LOG.info("[fstest] {}: fullscreen={} pos={},{} size={}x{} fb={}x{} decorated={} maximized={} target={}x{} {}", what,
             mc.getWindow().isFullscreen(), x[0], y[0], w[0], hh[0], fw[0], fh[0], GLFW.glfwGetWindowAttrib(h, GLFW.GLFW_DECORATED),
-            GLFW.glfwGetWindowAttrib(h, GLFW.GLFW_MAXIMIZED), mc.getMainRenderTarget().width, mc.getMainRenderTarget().height, Overlay.debugWin32(h));
+            GLFW.glfwGetWindowAttrib(h, GLFW.GLFW_MAXIMIZED), mc.gameRenderer.mainRenderTarget().width, mc.gameRenderer.mainRenderTarget().height, Overlay.debugWin32(h));
     }
 
     private static void tick() {

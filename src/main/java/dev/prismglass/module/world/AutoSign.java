@@ -31,7 +31,7 @@ public class AutoSign extends Module {
         // the client places its predicted block (and shrinks the stack) before this packet is built, so look at what
         // now stands where the click went rather than at the hand, which may already be empty
         if (event.packet instanceof ServerboundUseItemOnPacket use && mc.level != null) {
-            var hit = use.getHitResult();
+            var hit = use.hitResult();
             if (mc.level.getBlockState(hit.getBlockPos()).getBlock() instanceof SignBlock
                 || mc.level.getBlockState(hit.getBlockPos().relative(hit.getDirection())).getBlock() instanceof SignBlock) sincePlace = 0;
         }
@@ -40,13 +40,13 @@ public class AutoSign extends Module {
     @Override
     public void onTick() {
         if (sincePlace < 1000) sincePlace++;
-        if (!(mc.screen instanceof AbstractSignEditScreen screen) || screen == handled) return;
+        if (!(mc.gui.screen() instanceof AbstractSignEditScreen screen) || screen == handled) return;
         if (onlyPlaced.get() && sincePlace > 40) return;
         handled = screen;
         String[] lines = ((SignEditAccessor) screen).prism$messages();
         String[] text = {line1.get(), line2.get(), line3.get(), line4.get()};
         for (int i = 0; i < lines.length && i < text.length; i++) lines[i] = text[i];
         sincePlace = 1000;
-        mc.setScreen(null); // removed() sends the update with these lines
+        mc.gui.setScreen(null); // removed() sends the update with these lines
     }
 }

@@ -41,7 +41,7 @@ public abstract class GameRendererMixin {
 
     /** Our own screens draw over the HUD (the HUD editor's outlines must sit on top of it). */
     private static boolean prism$hudUnderScreen() {
-        var s = Minecraft.getInstance().screen;
+        var s = Minecraft.getInstance().gui.screen();
         return s instanceof ClickGuiScreen || s instanceof dev.prismglass.gui.HudEditorScreen || s instanceof dev.prismglass.gui.ChangelogScreen
             || s instanceof dev.prismglass.gui.AboutScreen;
     }

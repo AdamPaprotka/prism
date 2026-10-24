@@ -33,7 +33,7 @@ public class AutoNametag extends Module {
     @Override
     public void onTick() {
         if (restore != -1) { InvUtil.restore(restore); restore = -1; return; }
-        if (mc.screen != null) return;
+        if (mc.gui.screen() != null) return;
         int slot = InvUtil.findHotbar(s -> s.is(Items.NAME_TAG) && s.has(DataComponents.CUSTOM_NAME));
         if (slot == -1) return;
         Mob best = null;

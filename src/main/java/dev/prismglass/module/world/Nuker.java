@@ -70,7 +70,7 @@ public class Nuker extends Module {
         // Grim RotationBreak: dig only once the rotation the server has is actually on the block
         if (!BlockUtil.readyToDig(current, 30)) return;
         mc.gameMode.continueDestroyBlock(current, currentFace);
-        mc.player.swing(InteractionHand.MAIN_HAND); // NoSwingBreak
+        dev.prismglass.util.SwingUtil.punch(); // NoSwingBreak
     }
 
     private boolean valid(BlockPos pos, double r) {

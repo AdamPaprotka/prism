@@ -110,7 +110,7 @@ public class SusChunks extends Module {
     @Override
     public void onPacketReceive(PacketEvent event) {
         if (event.packet instanceof ClientboundLevelChunkWithLightPacket p) {
-            mark(ChunkPos.pack(p.getX(), p.getZ()));
+            mark(ChunkPos.pack(p.x(), p.z()));
         } else if (event.packet instanceof ClientboundBlockUpdatePacket p) {
             if (amethyst(p.getBlockState())) mark(ChunkPos.pack(p.getPos().getX() >> 4, p.getPos().getZ() >> 4));
         } else if (event.packet instanceof ClientboundSectionBlocksUpdatePacket p) {

@@ -19,7 +19,7 @@ public class AutoReplenish extends Module {
 
     @Override
     public void onTick() {
-        if (!timer.passed(delay.get()) || mc.screen != null) return;
+        if (!timer.passed(delay.get()) || mc.gui.screen() != null) return;
         for (int i = 0; i < 9; i++) {
             ItemStack s = mc.player.getInventory().getItem(i);
             if (s.isEmpty() || !s.isStackable() || s.getCount() > threshold.getInt() || s.getCount() >= s.getMaxStackSize()) continue;

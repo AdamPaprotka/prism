@@ -45,7 +45,7 @@ public class AutoSmelter extends Module {
 
     @Override
     public void onTick() {
-        if (mc.screen == null || !(mc.player.containerMenu instanceof AbstractFurnaceMenu menu)) { wait = 0; return; }
+        if (mc.gui.screen() == null || !(mc.player.containerMenu instanceof AbstractFurnaceMenu menu)) { wait = 0; return; }
         if (wait > 0) { wait--; return; }
         if (!menu.getCarried().isEmpty() || !InvUtil.canClick()) return;
         if (!lastCook.equals(items.get())) { lastCook = items.get(); cook = parse(lastCook); }

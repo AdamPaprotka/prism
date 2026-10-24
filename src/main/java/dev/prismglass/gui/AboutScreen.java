@@ -53,7 +53,7 @@ public class AboutScreen extends Screen {
         long used = (rt.totalMemory() - rt.freeMemory()) >> 20, max = rt.maxMemory() >> 20;
         r.add(new String[]{"Java", System.getProperty("java.version") + "  ·  " + used + " / " + max + " MB"});
         String gpu;
-        try { gpu = com.mojang.blaze3d.systems.RenderSystem.getDevice().getRenderer(); } catch (Throwable t) { gpu = "?"; }
+        try { gpu = com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().name(); } catch (Throwable t) { gpu = "?"; }
         r.add(new String[]{"GPU", gpu});
         r.add(new String[]{"OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")"});
         int on = 0;
@@ -114,9 +114,9 @@ public class AboutScreen extends Screen {
         buttonActions.clear();
         String[] labels = {"Changelog", "Copy info", "Open folder"};
         Runnable[] actions = {
-            () -> minecraft.setScreen(new ChangelogScreen(this)),
+            () -> minecraft.gui.setScreen(new ChangelogScreen(this)),
             () -> { minecraft.keyboardHandler.setClipboard(report()); flash = "Copied"; flashAt = System.currentTimeMillis(); },
-            () -> net.minecraft.util.Util.getPlatform().openPath(Prism.config().folder()),
+            () -> com.mojang.blaze3d.Blaze3D.openPath(Prism.config().folder()),
         };
         float gap = 6, btnW = (w - 28 - gap * 2) / 3, btnY = y + h - 48;
         for (int i = 0; i < labels.length; i++) {
@@ -163,5 +163,5 @@ public class AboutScreen extends Screen {
     }
 
     @Override
-    public void onClose() { minecraft.setScreen(parent); }
+    public void onClose() { minecraft.gui.setScreen(parent); }
 }

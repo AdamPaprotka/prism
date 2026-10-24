@@ -49,7 +49,7 @@ public class NowPlayingScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (closing) { minecraft.setScreen(null); return; } // second Esc: no waiting
+        if (closing) { minecraft.gui.setScreen(null); return; } // second Esc: no waiting
         closing = true;
     }
 
@@ -80,7 +80,7 @@ public class NowPlayingScreen extends Screen {
             rect[i] += (goal[i] - rect[i]) * k;
             done = Math.max(done, Math.abs(goal[i] - rect[i]));
         }
-        if (closing && done < 1.5f) { minecraft.setScreen(null); return; }
+        if (closing && done < 1.5f) { minecraft.gui.setScreen(null); return; }
         // draw everything at its final layout, mapped onto the eased rect
         ctx.pose().pushMatrix();
         ctx.pose().translate(rect[0], rect[1]);
@@ -146,7 +146,7 @@ public class NowPlayingScreen extends Screen {
         ctx.text(font, font.plainSubstrByWidth("open.spotify.com/search/" + searchQuery(), (int) w - 24), ax, by + 14, 0xFF7FB8FF, false);
         float bw = (w - 24 - 12) / 3, bY = y + h - 26;
         button(ctx, "Open in Spotify", x + 12, bY, bw, mouseX, mouseY,
-            () -> net.minecraft.util.Util.getPlatform().openUri(URI.create("spotify:search:" + URLEncoder.encode(searchQuery(), StandardCharsets.UTF_8).replace("+", "%20"))));
+            () -> com.mojang.blaze3d.Blaze3D.openUri(URI.create("spotify:search:" + URLEncoder.encode(searchQuery(), StandardCharsets.UTF_8).replace("+", "%20"))));
         button(ctx, flash != null && System.currentTimeMillis() - flashAt < 1500 ? flash : "Copy link", x + 18 + bw, bY, bw, mouseX, mouseY, () -> {
             minecraft.keyboardHandler.setClipboard(webLink());
             flash = "Copied";

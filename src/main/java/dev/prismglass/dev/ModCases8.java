@@ -28,8 +28,8 @@ final class ModCases8 {
 
     /** Right-clicks a block's top face (opens tables, furnaces...). */
     static void open(BlockPos pos) {
-        aim(pos.getCenter().add(0, 0.5, 0));
-        mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(pos.getCenter().add(0, 0.5, 0), Direction.UP, pos, false));
+        aim(net.minecraft.world.phys.Vec3.atCenterOf(pos).add(0, 0.5, 0));
+        mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(pos).add(0, 0.5, 0), Direction.UP, pos, false));
     }
 
     static void register() {
@@ -132,7 +132,7 @@ final class ModCases8 {
             if (caseTicks >= 6 && caseTicks < 40 && mc.level.getBlockState(first).is(Blocks.IRON_ORE)) {
                 aim(new Vec3(px + 0.5, py + 0.5, pz + 2));
                 mc.gameMode.continueDestroyBlock(first, Direction.NORTH);
-                mc.player.swing(InteractionHand.MAIN_HAND);
+                dev.prismglass.util.SwingUtil.punch();
             }
             if (caseTicks < 40) return false;
             int left = 0;
@@ -154,8 +154,8 @@ final class ModCases8 {
             if (caseTicks == 8) mc.options.keyUse.setDown(true);
             if (caseTicks == 10) mc.options.keyUse.setDown(false);
             if (caseTicks < 24) return false;
-            log("ghosthand: screen " + mc.screen);
-            return mc.screen instanceof net.minecraft.client.gui.screens.inventory.ContainerScreen;
+            log("ghosthand: screen " + mc.gui.screen());
+            return mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.ContainerScreen;
         }, () -> { mc.options.keyUse.setDown(false); mc.player.closeContainer(); disable(dev.prismglass.module.player.GhostHand.class); clearArea(); });
 
         for (boolean block : new boolean[]{false, true}) {
@@ -173,9 +173,9 @@ final class ModCases8 {
                 if (caseTicks < 24) return false;
                 boolean placed = level().getBlockState(new BlockPos(px, py + 1, pz + 2)).is(Blocks.COBBLESTONE);
                 boolean sneaking = splayer().isShiftKeyDown();
-                log(f("nointeract: screen=%s placed=%s serverSneak=%s", mc.screen, placed, sneaking));
-                return mc.screen == null && placed == block && !sneaking;
-            }, () -> { mc.setScreen(null); disable(dev.prismglass.module.player.NoInteract.class); clearArea(); });
+                log(f("nointeract: screen=%s placed=%s serverSneak=%s", mc.gui.screen(), placed, sneaking));
+                return mc.gui.screen() == null && placed == block && !sneaking;
+            }, () -> { mc.gui.setScreen(null); disable(dev.prismglass.module.player.NoInteract.class); clearArea(); });
         }
 
         add("InventoryTweaks: sort the main inventory", 120, () -> {
@@ -188,7 +188,7 @@ final class ModCases8 {
             enable(dev.prismglass.module.player.InventoryTweaks.class);
         }, () -> {
             var it = dev.prismglass.Prism.modules().get(dev.prismglass.module.player.InventoryTweaks.class);
-            if (caseTicks == 8) { mc.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)); }
+            if (caseTicks == 8) { mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)); }
             if (caseTicks == 12) it.startSort(mc.player.inventoryMenu.getSlot(20));
             if (caseTicks < 16 || it.sorting()) return false;
             var inv = mc.player.getInventory();
@@ -198,7 +198,7 @@ final class ModCases8 {
             return inv.getItem(9).is(Items.APPLE) && inv.getItem(9).getCount() == 9 && inv.getItem(10).is(Items.APPLE)
                 && inv.getItem(11).is(Items.ARROW) && inv.getItem(12).is(Items.STONE) && inv.getItem(12).getCount() == 40
                 && inv.getItem(13).is(Items.STONE) && inv.getItem(14).isEmpty() && inv.getItem(0).is(Items.DIAMOND_SWORD);
-        }, () -> { mc.setScreen(null); disable(dev.prismglass.module.player.InventoryTweaks.class); });
+        }, () -> { mc.gui.setScreen(null); disable(dev.prismglass.module.player.InventoryTweaks.class); });
 
         add("InventoryTweaks: AntiDrop keeps the totem, AutoDrop throws junk", 60, () -> {
             cmd("item replace entity @p hotbar.0 with totem_of_undying");
@@ -206,7 +206,7 @@ final class ModCases8 {
             var it = enable(dev.prismglass.module.player.InventoryTweaks.class);
             it.autoDrop.set(true);
         }, () -> {
-            if (caseTicks == 8) { mc.player.getInventory().setSelectedSlot(0); mc.player.drop(true); }
+            if (caseTicks == 8) { mc.player.getInventory().setSelectedSlot(0); mc.gameMode.dropItem(mc.player, true); }
             if (caseTicks < 40) return false;
             boolean totem = mc.player.getInventory().countItem(Items.TOTEM_OF_UNDYING) == 1 && splayer().getInventory().countItem(Items.TOTEM_OF_UNDYING) == 1;
             int flesh = splayer().getInventory().countItem(Items.ROTTEN_FLESH);
@@ -299,10 +299,10 @@ final class ModCases8 {
             bc.refill.parse("2"); bc.target.parse("8");
         }, () -> {
             if (caseTicks < 20) return false;
-            int beds = splayer().getInventory().countItem(Items.WHITE_BED);
-            if ((beds < 2 || mc.screen != null) && caseTicks < 110) return false;
-            log(f("autobedcrafter: beds=%d wool=%d screen=%s", beds, splayer().getInventory().countItem(Items.WHITE_WOOL), mc.screen));
-            return beds == 2 && mc.screen == null;
+            int beds = splayer().getInventory().countItem(Items.BED.pick(net.minecraft.world.item.DyeColor.WHITE));
+            if ((beds < 2 || mc.gui.screen() != null) && caseTicks < 110) return false;
+            log(f("autobedcrafter: beds=%d wool=%d screen=%s", beds, splayer().getInventory().countItem(Items.WOOL.pick(net.minecraft.world.item.DyeColor.WHITE)), mc.gui.screen()));
+            return beds == 2 && mc.gui.screen() == null;
         }, () -> { mc.player.closeContainer(); disable(dev.prismglass.module.combat.AutoBedCrafter.class); clearArea(); });
 
         add("AutoSmelter: loads ore + fuel, takes the result", 60, () -> {
@@ -383,10 +383,10 @@ final class ModCases8 {
                 for (var e : level().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, splayer().getBoundingBox().inflate(32)))
                     if (e.getItem().is(Items.DIAMOND)) thrown += e.getItem().getCount();
                 int held = splayer().getInventory().getItem(0).getCount(), sticks = splayer().getInventory().countItem(Items.STICK);
-                log(f("spamdupe %s: cycles=%d inChests=%d thrown=%d held=%d sticks=%d screen=%s", out, spam.cycles(), inChests, thrown, held, sticks, mc.screen));
+                log(f("spamdupe %s: cycles=%d inChests=%d thrown=%d held=%d sticks=%d screen=%s", out, spam.cycles(), inChests, thrown, held, sticks, mc.gui.screen()));
                 int moved = out.equals("ToChest") ? inChests : thrown;
                 int other = out.equals("ToChest") ? thrown : inChests;
-                return spam.cycles() == 2 && moved > 4000 && other == 0 && held == 1 && sticks == 5 && mc.screen == null;
+                return spam.cycles() == 2 && moved > 4000 && other == 0 && held == 1 && sticks == 5 && mc.gui.screen() == null;
             }, () -> {
                 var spam = dev.prismglass.Prism.modules().get(dev.prismglass.module.anarchy.SpamDupe.class);
                 spam.setEnabled(false);

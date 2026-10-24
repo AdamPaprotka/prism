@@ -90,7 +90,7 @@ public final class TorRunner {
     /** Writes the guide and opens it in the default text editor. */
     public static boolean openInstallGuide() {
         try {
-            net.minecraft.util.Util.getPlatform().openPath(writeInstallGuide());
+            com.mojang.blaze3d.Blaze3D.openPath(writeInstallGuide());
             return true;
         } catch (Exception e) {
             Prism.LOG.warn("Could not open torinstall.txt", e);

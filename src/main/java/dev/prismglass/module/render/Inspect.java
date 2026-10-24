@@ -123,7 +123,7 @@ public class Inspect extends Module {
         // the render hook ends clips too, but the hand isn't drawn in third person or with F1
         if (progress(System.nanoTime()) >= 1) { clip = null; return; }
         var p = mc.player;
-        if (cancelOnSwing.get() && (p.swinging || p.isUsingItem())) { cancel(); return; }
+        if (cancelOnSwing.get() && (p.isSwinging() || p.isUsingItem())) { cancel(); return; }
         if (cancelOnSwap.get()) {
             ItemStack now = hand == InteractionHand.MAIN_HAND ? p.getMainHandItem() : p.getOffhandItem();
             if (p.getInventory().getSelectedSlot() != startSlot || !ItemStack.isSameItem(now, startStack)) { cancel(); return; }
@@ -208,9 +208,9 @@ public class Inspect extends Module {
         // pivot: where vanilla's arm transform puts the hand
         float px = side * 0.56f, py = -0.52f, pz = -0.72f;
         poseStack.translate(px + side * p[TX], py + p[TY], pz + p[TZ]);
-        poseStack.mulPose(Axis.XP.rotationDegrees(p[RX]));
-        poseStack.mulPose(Axis.YP.rotationDegrees(side * p[RY]));
-        poseStack.mulPose(Axis.ZP.rotationDegrees(side * p[RZ]));
+        poseStack.rotate(Axis.XP.rotationDegrees(p[RX]));
+        poseStack.rotate(Axis.YP.rotationDegrees(side * p[RY]));
+        poseStack.rotate(Axis.ZP.rotationDegrees(side * p[RZ]));
         poseStack.translate(-px, -py, -pz);
         itemLayer = active != null;
     }

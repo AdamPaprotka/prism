@@ -30,7 +30,7 @@ public class AutoArmor extends Module {
 
     @Override
     public void onTick() {
-        if (!timer.passed(delay.get()) || (mc.screen != null && !(mc.screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen))) return;
+        if (!timer.passed(delay.get()) || (mc.gui.screen() != null && !(mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen))) return;
         if (findUpgrade() == null || !InvUtil.canClick()) return;
         if (equipBest()) timer.reset();
     }

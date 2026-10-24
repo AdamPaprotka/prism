@@ -10,7 +10,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.EntityHitResult;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Middle click: on a player toggles friend; anywhere else uses the Air item from your hotbar with a silent swap and
@@ -35,7 +34,7 @@ public class MiddleClick extends Module {
 
     @Override
     public void onTick() {
-        boolean down = mc.screen == null && GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_MIDDLE) == GLFW.GLFW_PRESS;
+        boolean down = mc.gui.screen() == null && dev.prismglass.util.KeyUtil.isMouseDown(dev.prismglass.util.KeyUtil.MOUSE_MIDDLE);
         if (down && !wasDown) { held = 0; click(); }
         else if (down) { held++; hold(); }
         else stopEating();
@@ -78,7 +77,7 @@ public class MiddleClick extends Module {
     private void use(Item item) {
         if (mc.player.getOffhandItem().is(item)) {
             mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
-            mc.player.swing(InteractionHand.OFF_HAND);
+            dev.prismglass.util.SwingUtil.use(InteractionHand.OFF_HAND);
             return;
         }
         int slot = InvUtil.findHotbar(item);
@@ -86,7 +85,7 @@ public class MiddleClick extends Module {
         int prev = mc.player.getInventory().getSelectedSlot();
         InvUtil.swap(slot, false);
         mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.use(InteractionHand.MAIN_HAND);
         InvUtil.restore(prev);
     }
 

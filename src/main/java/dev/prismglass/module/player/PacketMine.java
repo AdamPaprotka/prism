@@ -112,7 +112,7 @@ public class PacketMine extends Module {
         if (current == null) current = new Job(pos.immutable(), face);
         else if (queue.size() + 1 < queueSize.getInt()) queue.add(new Job(pos.immutable(), face));
         else return true; // queue full: ignore the click instead of letting vanilla mine
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.punch();
         return true;
     }
 
@@ -165,7 +165,7 @@ public class PacketMine extends Module {
                 mc.player.connection.send(new ServerboundPlayerActionPacket(Action.STOP_DESTROY_BLOCK, j.pos, face));
                 j.stopSent = true;
             }
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.punch();
             j.started = true;
             j.ticks = 0;
             return;
@@ -192,7 +192,7 @@ public class PacketMine extends Module {
             Direction face = BlockUtil.isFaceVisible(j.pos, j.face, mc.player.getEyePosition()) ? j.face : BlockUtil.breakFace(j.pos);
             if (face == null || !BlockUtil.readyToDig(j.pos, 70) || !Prism.guard().canPlace()) return;
             mc.player.connection.send(new ServerboundPlayerActionPacket(Action.STOP_DESTROY_BLOCK, j.pos, face));
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            dev.prismglass.util.SwingUtil.punch();
             j.stopSent = true;
         }
 
@@ -237,7 +237,7 @@ public class PacketMine extends Module {
         if (face == null) face = rebreakFace;
         if (face == null || !Prism.guard().canPlace()) return;
         mc.player.connection.send(new ServerboundPlayerActionPacket(Action.STOP_DESTROY_BLOCK, rebreakPos, face));
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        dev.prismglass.util.SwingUtil.punch();
         rebreakSentAt = clock;
         rebreakSwapped = false;
     }

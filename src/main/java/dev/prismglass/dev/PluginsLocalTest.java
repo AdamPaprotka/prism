@@ -360,7 +360,7 @@ final class PluginsLocalTest {
                 Prism.commands().handle(".plugins reload");
                 check("command: the aliases exist", Prism.commands().complete(".pl") != null);
                 check("HUD: the panel is registered with the HUD editor", hudHasPanel());
-                Screenshot.grab(mc.gameDirectory, "prism-plugins.png", mc.getMainRenderTarget(), 1, msg -> log(msg.getString()));
+                Screenshot.grab(mc.gameDirectory, "prism-plugins.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
             }));
     }
 
@@ -507,7 +507,7 @@ final class PluginsLocalTest {
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null
-            || mc.screen instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
+            || mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen) return;
         t++;
         PluginScanner sc = Prism.modules().get(PluginScanner.class);
         if (t == 30) {

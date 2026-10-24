@@ -138,8 +138,8 @@ public final class OreSimulator {
     }
 
     private static boolean isOreLike(BlockState s) {
-        return s.is(BlockTags.COAL_ORES) || s.is(BlockTags.IRON_ORES) || s.is(BlockTags.GOLD_ORES) || s.is(BlockTags.DIAMOND_ORES)
-            || s.is(BlockTags.EMERALD_ORES) || s.is(BlockTags.REDSTONE_ORES) || s.is(BlockTags.LAPIS_ORES) || s.is(BlockTags.COPPER_ORES)
+        return s.is(net.minecraft.tags.BlockItemTags.COAL_ORES.block()) || s.is(BlockTags.IRON_ORES) || s.is(BlockTags.GOLD_ORES) || s.is(net.minecraft.tags.BlockItemTags.DIAMOND_ORES.block())
+            || s.is(net.minecraft.tags.BlockItemTags.EMERALD_ORES.block()) || s.is(net.minecraft.tags.BlockItemTags.REDSTONE_ORES.block()) || s.is(net.minecraft.tags.BlockItemTags.LAPIS_ORES.block()) || s.is(BlockTags.COPPER_ORES)
             || s.is(Blocks.ANCIENT_DEBRIS) || s.is(Blocks.NETHER_QUARTZ_ORE) || s.is(Blocks.NETHER_GOLD_ORE);
     }
 

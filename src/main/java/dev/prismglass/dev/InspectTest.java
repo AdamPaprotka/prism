@@ -48,7 +48,7 @@ public final class InspectTest {
             log("selfcheck: " + Inspect.CLIPS.size() + " clips, " + bad.size() + " problems");
             String name = "prismtest-inspect-" + System.currentTimeMillis();
             LevelSettings info = new LevelSettings(name, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
-            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), WorldPresets::createFlatWorldDimensions, null);
+            mc.createWorldOpenFlows().createFreshLevel(name, info, WorldOptions.defaultWithRandomSeed(), r -> r.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), null);
             return;
         }
         if (mc.player == null || mc.level == null || mc.getSingleplayerServer() == null) return;
@@ -58,7 +58,7 @@ public final class InspectTest {
         if (t == 30) {
             run(server, "gamerule advance_time false");
             run(server, "time set noon");
-            mc.options.hideGui = false; // F1 hides the first-person hand too
+            if (mc.gui.hud.isHidden()) mc.gui.hud.toggle(); // F1 hides the first-person hand too
             mc.player.setXRot(10);
         }
         if (t < 60) return;
@@ -91,7 +91,7 @@ public final class InspectTest {
         float u = (System.nanoTime() - startNanos) / 1e9f / seconds;
         if (shot < SHOTS.length && u >= SHOTS[shot]) {
             String file = String.format(Locale.ROOT, "inspect-%02d-%s-%d.png", item, label, shot);
-            Screenshot.grab(mc.gameDirectory, file, mc.getMainRenderTarget(), 1, msg -> {});
+            Screenshot.grab(mc.gameDirectory, file, mc.gameRenderer.mainRenderTarget(), 1, msg -> {});
             shot++;
         }
         if (u > 1.6f && inspect.inspecting()) {
