@@ -20,6 +20,8 @@ import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
 import net.minecraft.util.Mth;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -28,7 +30,6 @@ import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.entity.BannerBlockEntity;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
-import net.minecraft.world.level.block.entity.BedBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrewingStandBlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
@@ -213,17 +214,25 @@ public class BaseFinder extends Module {
             minY = Math.min(minY, y);
             maxY = Math.max(maxY, y);
         }
-        for (var e : beScore.entrySet()) if (e.getValue() > topScore) { topScore = e.getValue(); top = e.getKey(); }
 
         // unnatural blocks, palette-filtered per section
         Map<Block, Float> blockScore = new HashMap<>();
         LevelChunkSection[] sections = chunk.getSections();
         for (int i = 0; i < sections.length; i++) {
             LevelChunkSection s = sections[i];
-            if (s == null || s.hasOnlyAir() || !s.maybeHas(st -> weights.containsKey(st.getBlock()))) continue;
+            if (s == null || s.hasOnlyAir() || !s.maybeHas(st -> weights.containsKey(st.getBlock()) || st.is(BlockTags.BEDS))) continue;
             int baseY = chunk.getSectionYFromSectionIndex(i) << 4;
             for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
-                Block b = s.getBlockState(x, y, z).getBlock();
+                BlockState st = s.getBlockState(x, y, z);
+                Block b = st.getBlock();
+                if (st.is(BlockTags.BEDS)) {
+                    // 26.3: beds have no block entity any more; scored like the old BedBlockEntity (per half, uncapped)
+                    score += BED_WEIGHT;
+                    beScore.merge(b.getName().getString(), BED_WEIGHT, Float::sum);
+                    minY = Math.min(minY, baseY + y);
+                    maxY = Math.max(maxY, baseY + y);
+                    continue;
+                }
                 Float w = weights.get(b);
                 if (w == null) continue;
                 blockScore.merge(b, w, Float::sum);
@@ -231,6 +240,7 @@ public class BaseFinder extends Module {
                 maxY = Math.max(maxY, baseY + y);
             }
         }
+        for (var e : beScore.entrySet()) if (e.getValue() > topScore) { topScore = e.getValue(); top = e.getKey(); }
         for (var e : blockScore.entrySet()) {
             float capped = Math.min(e.getValue(), caps.getOrDefault(e.getKey(), 40f));
             score += capped;
@@ -251,7 +261,7 @@ public class BaseFinder extends Module {
     }
 
     private void announce(ChunkResult r) {
-        String line = String.format("Base? chunk %d,%d (block %d %d %d) score %.0f, %d storage, top: %s [%s]",
+        String line = String.format(Locale.ROOT, "Base? chunk %d,%d (block %d %d %d) score %.0f, %d storage, top: %s [%s]",
             r.x(), r.z(), r.x() * 16 + 8, (r.minY() + r.maxY()) / 2, r.z() * 16 + 8, r.score(), r.storage(),
             r.top() == null ? "?" : r.top(), mc.level.dimension().identifier().getPath());
         ChatUtil.good(line);
@@ -270,6 +280,8 @@ public class BaseFinder extends Module {
             || be instanceof EnderChestBlockEntity || be instanceof HopperBlockEntity || be instanceof DispenserBlockEntity;
     }
 
+    private static final float BED_WEIGHT = 6;
+
     private static float blockEntityWeight(BlockEntity be) {
         if (be instanceof ShulkerBoxBlockEntity) return 12;
         if (be instanceof BeaconBlockEntity) return 15;
@@ -280,7 +292,6 @@ public class BaseFinder extends Module {
         if (be instanceof HopperBlockEntity) return 5;
         if (be instanceof AbstractFurnaceBlockEntity) return 3;
         if (be instanceof DispenserBlockEntity) return 3;    // includes droppers
-        if (be instanceof BedBlockEntity) return 6;
         if (be instanceof EnchantingTableBlockEntity) return 6;
         if (be instanceof BrewingStandBlockEntity) return 5;
         if (be instanceof SignBlockEntity) return 3;
@@ -310,10 +321,7 @@ public class BaseFinder extends Module {
         // planks: villages/mineshafts have them, so weak
         put(w, cap, 0.15f, 15, Blocks.OAK_PLANKS, Blocks.SPRUCE_PLANKS, Blocks.BIRCH_PLANKS, Blocks.JUNGLE_PLANKS, Blocks.ACACIA_PLANKS,
             Blocks.DARK_OAK_PLANKS, Blocks.MANGROVE_PLANKS, Blocks.CHERRY_PLANKS, Blocks.BAMBOO_PLANKS, Blocks.CRIMSON_PLANKS, Blocks.WARPED_PLANKS);
-        put(w, cap, 2.5f, 50, Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.WHITE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.ORANGE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.MAGENTA), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.LIGHT_BLUE),
-            Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.YELLOW), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.LIME), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.PINK), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.GRAY), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.LIGHT_GRAY),
-            Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.CYAN), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.PURPLE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.BLUE), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.BROWN), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.GREEN),
-            Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.RED), Blocks.CONCRETE.pick(net.minecraft.world.item.DyeColor.BLACK));
+        put(w, cap, 2.5f, 50, Blocks.CONCRETE.asList().toArray(Block[]::new)); // all 16 colours
         put(w, cap, 2f, 30, Blocks.QUARTZ_BLOCK, Blocks.SMOOTH_QUARTZ, Blocks.QUARTZ_BRICKS, Blocks.QUARTZ_PILLAR, Blocks.BRICKS,
             Blocks.SEA_LANTERN, Blocks.IRON_BARS, Blocks.SCAFFOLDING, Blocks.HONEY_BLOCK, Blocks.SLIME_BLOCK);
         put(w, cap, 3f, 40, Blocks.CRAFTING_TABLE, Blocks.ANVIL, Blocks.CHIPPED_ANVIL, Blocks.DAMAGED_ANVIL, Blocks.GRINDSTONE,
@@ -323,7 +331,7 @@ public class BaseFinder extends Module {
         put(w, cap, 6f, 60, Blocks.IRON_BLOCK, Blocks.GOLD_BLOCK, Blocks.DIAMOND_BLOCK, Blocks.EMERALD_BLOCK, Blocks.NETHERITE_BLOCK,
             Blocks.LAPIS_BLOCK, Blocks.REDSTONE_BLOCK, Blocks.RESPAWN_ANCHOR, Blocks.CONDUIT, Blocks.LODESTONE);
         put(w, cap, 1f, 20, Blocks.TORCH, Blocks.WALL_TORCH, Blocks.LANTERN, Blocks.SOUL_LANTERN, Blocks.SOUL_TORCH, Blocks.SOUL_WALL_TORCH);
-        put(w, cap, 1f, 20, Blocks.CRYING_OBSIDIAN, Blocks.WOOL.pick(net.minecraft.world.item.DyeColor.WHITE), Blocks.CARPET.pick(net.minecraft.world.item.DyeColor.WHITE), Blocks.WOOL.pick(net.minecraft.world.item.DyeColor.BLACK), Blocks.WOOL.pick(net.minecraft.world.item.DyeColor.RED));
+        put(w, cap, 1f, 20, Blocks.CRYING_OBSIDIAN, Blocks.WOOL.pick(DyeColor.WHITE), Blocks.CARPET.pick(DyeColor.WHITE), Blocks.WOOL.pick(DyeColor.BLACK), Blocks.WOOL.pick(DyeColor.RED));
 
         if (overworld || end) {
             // nether blocks out of place (ruined portals add a little netherrack, hence the cap)

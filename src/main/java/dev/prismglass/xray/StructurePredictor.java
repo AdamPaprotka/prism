@@ -15,6 +15,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.biome.TheEndBiomeSource;
@@ -26,6 +27,7 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.WorldGenerationContext;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
+import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
@@ -68,7 +70,7 @@ public final class StructurePredictor {
         this.seed = seed;
         this.dim = dim;
         if (lookup == null) {
-            lookup = VanillaRegistries.createLookup();
+            lookup = VanillaRegistries.createWorldLookup();
             bindBiomeTags(lookup);
         }
         ResourceKey<NoiseGeneratorSettings> settingsKey;
@@ -89,14 +91,21 @@ public final class StructurePredictor {
         }
         Holder<NoiseGeneratorSettings> settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(settingsKey);
         generator = new NoiseBasedChunkGenerator(source, settings);
-        randomState = RandomState.create(settings.value(), lookup.lookupOrThrow(Registries.NOISE), seed);
+        randomState = RandomState.create(lookup.lookupOrThrow(Registries.NOISE), seed, settings.value());
         // createForNormal would list tag contents (unbound here); same state, sets filtered with contains() instead
         Set<Holder<Biome>> possible = source.possibleBiomes();
         List<Holder<StructureSet>> sets = lookup.lookupOrThrow(Registries.STRUCTURE_SET).listElements()
             .<Holder<StructureSet>>map(h -> h)
             .filter(set -> set.value().structures().stream().anyMatch(e -> possible.stream().anyMatch(e.structure().value().biomes()::contains)))
             .toList();
-        state = new ChunkGeneratorStructureState(randomState, source, seed, seed, sets);
+        // 26.3: the state also carries the dimension origin (only DimensionOriginStructurePlacement reads it)
+        ChunkPos origin;
+        try {
+            origin = generator.getOrigin(randomState);
+        } catch (Throwable t) {
+            origin = ChunkPos.ZERO;
+        }
+        state = new ChunkGeneratorStructureState(randomState, source, seed, origin, seed, sets);
         state.ensureStructuresGenerated();
     }
 
@@ -116,6 +125,7 @@ public final class StructurePredictor {
     /** Every predicted structure start within {@code radius} chunks (square) of the given chunk. */
     public List<Hit> scan(int cx, int cz, int radius, Predicate<String> wantCategory) {
         List<Hit> out = new ArrayList<>();
+        Climate.Sampler climate = climate();
         for (Holder<StructureSet> set : state.possibleStructureSets()) {
             StructureSet value = set.value();
             if (value.structures().stream().noneMatch(e -> wantCategory.test(category(id(e.structure()))))) continue;
@@ -128,7 +138,7 @@ public final class StructurePredictor {
                     ChunkPos c = spread.getPotentialStructureChunk(seed, rx * spacing, rz * spacing);
                     if (Math.abs(c.x() - cx) > radius || Math.abs(c.z() - cz) > radius) continue;
                     if (!placement.isStructureChunk(state, c.x(), c.z())) continue;
-                    Hit h = resolve(value, c);
+                    Hit h = resolve(value, c, climate);
                     if (h != null && wantCategory.test(h.category())) out.add(h);
                 }
             } else if (placement instanceof ConcentricRingsStructurePlacement rings) {
@@ -136,7 +146,7 @@ public final class StructurePredictor {
                 if (positions == null) continue;
                 for (ChunkPos c : positions) {
                     if (Math.abs(c.x() - cx) > radius || Math.abs(c.z() - cz) > radius) continue;
-                    Hit h = resolve(value, c);
+                    Hit h = resolve(value, c, climate);
                     if (h != null && wantCategory.test(h.category())) out.add(h);
                 }
             }
@@ -145,9 +155,9 @@ public final class StructurePredictor {
     }
 
     /** Vanilla's choice for a placement chunk: single structure, or weighted retry loop over the set. */
-    private Hit resolve(StructureSet set, ChunkPos chunk) {
+    private Hit resolve(StructureSet set, ChunkPos chunk, Climate.Sampler climate) {
         List<StructureSet.StructureSelectionEntry> entries = set.structures();
-        if (entries.size() == 1) return tryStructure(entries.get(0), chunk);
+        if (entries.size() == 1) return tryStructure(entries.get(0), chunk, climate);
         List<StructureSet.StructureSelectionEntry> options = new ArrayList<>(entries);
         WorldgenRandom random = new WorldgenRandom(new LegacyRandomSource(0L));
         random.setLargeFeatureSeed(seed, chunk.x(), chunk.z());
@@ -162,7 +172,7 @@ public final class StructurePredictor {
                 index++;
             }
             StructureSet.StructureSelectionEntry selected = options.get(index);
-            Hit h = tryStructure(selected, chunk);
+            Hit h = tryStructure(selected, chunk, climate);
             if (h != null) return h;
             options.remove(index);
             total -= selected.weight();
@@ -170,13 +180,13 @@ public final class StructurePredictor {
         return null;
     }
 
-    private Hit tryStructure(StructureSet.StructureSelectionEntry entry, ChunkPos chunk) {
+    private Hit tryStructure(StructureSet.StructureSelectionEntry entry, ChunkPos chunk, Climate.Sampler climate) {
         Structure structure = entry.structure().value();
         Predicate<Holder<Biome>> biomeOk = structure.biomes()::contains;
         String id = id(entry.structure());
         try {
             Structure.GenerationContext ctx = new Structure.GenerationContext(
-                null, generator, source, randomState, null, seed, chunk, height, biomeOk);
+                null, generator, source, climate, randomState, null, seed, chunk, height, biomeOk);
             BlockPos pos;
             if (structure instanceof JigsawStructure jigsaw) {
                 int startY = jigsaw.startHeight.sample(ctx.random(), new WorldGenerationContext(generator, height));
@@ -184,11 +194,11 @@ public final class StructurePredictor {
                 Optional<Heightmap.Types> project = jigsaw.projectStartToHeightmap;
                 int y = project.isEmpty() ? startY : startY + generator.getFirstFreeHeight(x, z, project.get(), height, randomState);
                 pos = new BlockPos(x, y, z);
-                if (!biomeOk.test(biomeAt(pos))) return null;
+                if (!biomeOk.test(biomeAt(pos, climate))) return null;
             } else if (structure instanceof RuinedPortalStructure) {
                 int x = chunk.getMinBlockX() + 8, z = chunk.getMinBlockZ() + 8;
                 pos = new BlockPos(x, generator.getFirstFreeHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, height, randomState), z);
-                if (!biomeOk.test(biomeAt(pos))) return null;
+                if (!biomeOk.test(biomeAt(pos, climate))) return null;
             } else {
                 Optional<Structure.GenerationStub> stub = structure.findValidGenerationPoint(ctx);
                 if (stub.isEmpty()) return null;
@@ -208,7 +218,7 @@ public final class StructurePredictor {
      */
     private static void bindBiomeTags(HolderLookup.Provider provider) {
         Map<String, List<String>> raw = new HashMap<>();
-        try (var pack = net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource()) {
+        try (var pack = net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource().fullResources()) {
             pack.listResources(net.minecraft.server.packs.PackType.SERVER_DATA, "minecraft", "tags/worldgen/biome", (id, supplier) -> {
                 String path = id.getPath();
                 String name = path.substring("tags/worldgen/biome/".length(), path.length() - ".json".length());
@@ -268,6 +278,7 @@ public final class StructurePredictor {
     /** Dev: why a chunk did or didn't produce a given structure. */
     public String debug(String id, ChunkPos c) {
         StringBuilder sb = new StringBuilder(id + "@" + c + ":");
+        Climate.Sampler climate = climate();
         for (Holder<StructureSet> set : state.possibleStructureSets()) {
             for (var e : set.value().structures()) {
                 if (!id(e.structure()).equals(id)) continue;
@@ -276,17 +287,17 @@ public final class StructurePredictor {
                 if (p instanceof RandomSpreadStructurePlacement rs) sb.append(" potential=").append(rs.getPotentialStructureChunk(seed, c.x(), c.z()));
                 Structure s = e.structure().value();
                 if (s instanceof JigsawStructure j) {
-                    var ctx = new Structure.GenerationContext(null, generator, source, randomState, null, seed, c, height, s.biomes()::contains);
+                    var ctx = new Structure.GenerationContext(null, generator, source, climate, randomState, null, seed, c, height, s.biomes()::contains);
                     int startY = j.startHeight.sample(ctx.random(), new WorldGenerationContext(generator, height));
                     for (int dx = 0; dx <= 16; dx += 8) for (int dz = 0; dz <= 16; dz += 8) {
                         int x = c.getMinBlockX() + dx, z = c.getMinBlockZ() + dz;
                         int y = j.projectStartToHeightmap.isEmpty() ? startY : startY + generator.getFirstFreeHeight(x, z, j.projectStartToHeightmap.get(), height, randomState);
-                        Holder<Biome> b = biomeAt(new BlockPos(x, y, z));
+                        Holder<Biome> b = biomeAt(new BlockPos(x, y, z), climate);
                         sb.append(" [").append(dx).append(',').append(dz).append(" y").append(y).append(' ')
                             .append(b.unwrapKey().map(k -> k.identifier().getPath()).orElse("?")).append(s.biomes().contains(b) ? " ok" : " NO").append(']');
                     }
                 }
-                sb.append(" resolved=").append(resolve(set.value(), c));
+                sb.append(" resolved=").append(resolve(set.value(), c, climate));
             }
         }
         return sb.toString();
@@ -303,9 +314,10 @@ public final class StructurePredictor {
         Holder<Structure> endCity = lookup.lookupOrThrow(Registries.STRUCTURE)
             .getOrThrow(net.minecraft.world.level.levelgen.structure.BuiltinStructures.END_CITY);
         List<Ship> out = new ArrayList<>();
+        Climate.Sampler climate = climate();
         for (Hit city : scan(cx, cz, radius, c -> c.equals("end_city"))) {
             try {
-                var start = endCity.value().generate(endCity, Level.END, null, generator, source, randomState, templates, seed,
+                var start = endCity.value().generate(endCity, Level.END, null, generator, source, climate, randomState, templates, seed,
                     city.chunk(), 0, height, endCity.value().biomes()::contains);
                 if (!start.isValid()) continue;
                 Ship ship = shipOf(city.pos(), start.getPieces());
@@ -345,7 +357,7 @@ public final class StructurePredictor {
             Map<net.minecraft.resources.Identifier, Optional<net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate>> repo =
                 new java.util.concurrent.ConcurrentHashMap<>();
             var fixer = net.minecraft.util.datafix.DataFixers.getDataFixer();
-            try (var pack = net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource()) {
+            try (var pack = net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource().fullResources()) {
                 pack.listResources(net.minecraft.server.packs.PackType.SERVER_DATA, "minecraft", "structure/end_city", (id, supplier) -> {
                     String path = id.getPath(); // structure/end_city/ship.nbt
                     if (!path.endsWith(".nbt")) return;
@@ -372,8 +384,16 @@ public final class StructurePredictor {
         }
     }
 
-    private Holder<Biome> biomeAt(BlockPos p) {
-        return source.getNoiseBiome(QuartPos.fromBlock(p.getX()), QuartPos.fromBlock(p.getY()), QuartPos.fromBlock(p.getZ()), randomState.sampler());
+    /**
+     * A fresh climate sampler, like vanilla's per-call one in {@code ChunkGenerator#createStructures} (its caches are
+     * single-threaded, so never share one between scans).
+     */
+    private Climate.Sampler climate() {
+        return randomState.createClimateSampler(SamplerContext.builder().enableCaches().build());
+    }
+
+    private Holder<Biome> biomeAt(BlockPos p, Climate.Sampler climate) {
+        return source.createResolver(climate).getNoiseBiome(QuartPos.fromBlock(p.getX()), QuartPos.fromBlock(p.getY()), QuartPos.fromBlock(p.getZ()));
     }
 
     private static String id(Holder<Structure> structure) {
