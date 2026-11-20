@@ -8,6 +8,7 @@ accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode destroyBlo
 accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode isDestroying Z
 
 # client
+accessible method net/minecraft/client/multiplayer/ClientLevel getBlockStatePredictionHandler ()Lnet/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler;
 accessible field net/minecraft/client/Minecraft rightClickDelay I
 accessible field net/minecraft/client/Minecraft missTime I
 accessible method net/minecraft/client/Minecraft startAttack ()Z
@@ -36,6 +37,7 @@ mutable field net/minecraft/network/protocol/game/ClientboundExplodePacket playe
 # structure finder (seed mode): jigsaw start height
 accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure startHeight Lnet/minecraft/world/level/levelgen/heightproviders/HeightProvider;
 accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure projectStartToHeightmap Ljava/util/Optional;
+accessible field net/minecraft/world/level/levelgen/structure/structures/JigsawStructure startJigsawName Ljava/util/Optional;
 accessible method net/minecraft/core/Holder$Reference bindTags (Ljava/util/Collection;)V
 accessible method net/minecraft/world/level/chunk/ChunkGeneratorStructureState <init> (Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeSource;JLnet/minecraft/world/level/ChunkPos;JLjava/util/List;)V
 mutable field net/minecraft/world/level/levelgen/structure/Structure settings Lnet/minecraft/world/level/levelgen/structure/Structure$StructureSettings;
@@ -69,3 +71,11 @@ accessible field net/minecraft/network/Connection packetListener Lnet/minecraft/
 accessible field net/minecraft/network/Connection disconnectListener Lnet/minecraft/network/PacketListener;
 accessible field net/minecraft/client/multiplayer/ClientCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;
 mutable field net/minecraft/client/multiplayer/ClientCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;
+
+# structure finder exact layouts (vanilla pieces recorded, village templates) + seedcracker
+accessible field net/minecraft/world/level/levelgen/structure/ScatteredFeaturePiece heightPosition I
+accessible field net/minecraft/world/level/levelgen/structure/structures/SwampHutPiece spawnedWitch Z
+accessible field net/minecraft/world/level/levelgen/structure/structures/SwampHutPiece spawnedCat Z
+accessible field net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate palettes Ljava/util/List;
+accessible method net/minecraft/world/level/levelgen/structure/placement/AbstractSpreadingStructurePlacement salt ()I
+accessible field net/minecraft/world/level/biome/BiomeManager biomeZoomSeed J

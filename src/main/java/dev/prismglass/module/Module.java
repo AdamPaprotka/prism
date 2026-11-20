@@ -119,6 +119,8 @@ public abstract class Module {
     }
 
     public boolean isEnabled() { return enabled; }
+    /** Always-on plumbing (Keybinds, Inspect): never listed in the ClickGUI panels or search, never hit by Panic. */
+    public boolean internal() { return false; }
     public String getName() { return name; }
     public String getDescription() { return description; }
     public Category getCategory() { return category; }

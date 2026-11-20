@@ -18,10 +18,19 @@ public final class CommandManager {
     private final Map<String, Command> commands = new LinkedHashMap<>();
     private String prefix = ".";
 
-    @FunctionalInterface
-    private interface Handler { void run(String[] args) throws Exception; }
+    private record Command(String name, String usage, String description, dev.prismglass.api.CommandHandler handler, String... aliases) {}
 
-    private record Command(String name, String usage, String description, Handler handler, String... aliases) {}
+    /** Tab completion of addon commands (built-in ones are in argOptions). */
+    private final Map<String, java.util.function.Function<String[], List<String>>> completers = new java.util.HashMap<>();
+
+    /** Addon API: a new command. An existing name is refused; aliases already taken are skipped. */
+    public void register(String name, String usage, String description, dev.prismglass.api.CommandHandler handler,
+                         java.util.function.Function<String[], List<String>> completer, String... aliases) {
+        String key = name.toLowerCase(java.util.Locale.ROOT);
+        if (commands.containsKey(key)) throw new IllegalArgumentException("Prism already has a command ." + name);
+        add(new Command(key, usage, description, handler, aliases));
+        if (completer != null) completers.put(key, completer);
+    }
 
     public CommandManager() {
         add(new Command("help", "help", "List commands.", a -> {
@@ -244,6 +253,20 @@ public final class CommandManager {
             dupe.start(cycles);
             if (dupe.isEnabled()) ChatUtil.good("SpamDupe: " + (cycles > 0 ? cycles : dupe.cyclesSetting.getInt()) + " cycles, " + dupe.output.get());
         }));
+        add(new Command("dupe", "dupe <preset> [command] | list | stop", "PluginDupe: run a plugin dupe race (VaultKick, ShulkerKick, MountKick...). The command fills {cmd}, e.g. .dupe vaultkick pv 2.", a -> {
+            var dupe = Prism.modules().get(dev.prismglass.module.anarchy.PluginDupe.class);
+            String what = arg(a, 0);
+            if (what.equalsIgnoreCase("stop")) { dupe.setEnabled(false); return; }
+            if (what.isEmpty() || what.equalsIgnoreCase("list")) {
+                for (var e : dev.prismglass.module.anarchy.PluginDupe.ABOUT.entrySet())
+                    ChatUtil.info("§f" + e.getKey() + " §7" + e.getValue());
+                return;
+            }
+            String preset = null;
+            for (String p : dev.prismglass.module.anarchy.PluginDupe.PRESETS.keySet()) if (p.equalsIgnoreCase(what)) preset = p;
+            if (preset == null) { ChatUtil.error("Unknown preset " + what + " (.dupe list)"); return; }
+            dupe.start(preset, a.length > 1 ? String.join(" ", Arrays.copyOfRange(a, 1, a.length)) : null);
+        }));
         add(new Command("seed", "seed <seed|clear>", "World seed for Xray seed mode.", a -> {
             var xray = Prism.modules().get(dev.prismglass.module.render.Xray.class);
             if (a.length == 0) { ChatUtil.info("Seed: §f" + (xray.seed.get().isEmpty() ? "none" : xray.seed.get())); return; }
@@ -253,6 +276,22 @@ public final class CommandManager {
             xray.mode.parse("Seed");
             if (!xray.isEnabled()) xray.toggle();
             ChatUtil.good("Seed set to " + dev.prismglass.module.render.Xray.parseSeed(value) + " - Xray is in Seed mode");
+        }));
+        add(new Command("structurefinder", "structurefinder find <structure|biome_<biome>> | stop", "Marks the nearest structure or biome (needs the seed); the marker goes away within 50m.", a -> {
+            var sf = Prism.modules().get(dev.prismglass.module.world.StructureFinder.class);
+            switch (arg(a, 0).toLowerCase()) {
+                case "find" -> sf.find(arg(a, 1));
+                case "stop", "clear" -> sf.stopFind();
+                default -> ChatUtil.error("Usage: " + prefix + "structurefinder find <structure> | stop");
+            }
+        }, "sf", "structure"));
+        add(new Command("crack", "crack [reset|retry]", "SeedCracker status; reset forgets this server's data, retry searches again.", a -> {
+            var cracker = Prism.modules().get(dev.prismglass.module.world.SeedCracker.class);
+            String what = a.length > 0 ? a[0].toLowerCase() : "";
+            if (what.equals("reset")) { cracker.reset(); ChatUtil.good("SeedCracker: data for this server cleared"); return; }
+            if (what.equals("retry")) { cracker.retry(); ChatUtil.good("SeedCracker: searching again"); return; }
+            if (!cracker.isEnabled()) ChatUtil.info("SeedCracker is off (turn it on to collect)");
+            for (String line : cracker.describe()) ChatUtil.info(line);
         }));
         add(new Command("plugins", "plugins [probe|deep|last|why [name]|reload]", "Scan the server's plugins and whether it hides them (probe also runs /bukkit:plugins; deep adds a letter sweep and the error probe, which run real commands; last reprints; why shows the evidence).", a -> {
             var scanner = Prism.modules().get(dev.prismglass.module.world.PluginScanner.class);
@@ -293,8 +332,10 @@ public final class CommandManager {
             String err = Prism.bots().leave(a[0]);
             if (err != null) ChatUtil.error(err);
         }, "lp"));
-        add(new Command("switchplayer", "switchplayer <bot> [drop]", "Become that bot: your session switches to its cracked account and reconnects; a bot takes your old name unless you say drop.", a -> {
-            String err = Prism.bots().switchTo(arg(a, 0), !(a.length > 1 && a[1].equalsIgnoreCase("drop")));
+        add(new Command("switchplayer", "switchplayer <bot> [drop] [fast]", "Become that bot: your session switches to its cracked account. Add \"fast\" for the experimental seamless switch (no relog); a bot takes your old name unless you say drop.", a -> {
+            boolean drop = false, fast = false;
+            for (int i = 1; i < a.length; i++) { if (a[i].equalsIgnoreCase("drop")) drop = true; else if (a[i].equalsIgnoreCase("fast")) fast = true; }
+            String err = fast ? Prism.bots().fastSwitch(arg(a, 0), !drop) : Prism.bots().switchTo(arg(a, 0), !drop);
             if (err != null) ChatUtil.error(err);
         }, "switch", "swp"));
         add(new Command("sayplayer", "sayplayer <name|all> <message>", "Chat as a bot; a message starting with / runs as a command.", a -> {
@@ -303,6 +344,36 @@ public final class CommandManager {
             String err = Prism.bots().say(arg(a, 0), msg);
             if (err != null) ChatUtil.error(err);
         }, "sp", "botsay"));
+        add(new Command("playerfollow", "playerfollow <bot|all> <player|off>", "Make your bot(s) walk after a player (or off). The target must be loaded near the bot.", a -> {
+            if (a.length < 2) throw new IllegalArgumentException("Usage: .playerfollow <bot|all> <player|off>");
+            String err = a[1].equalsIgnoreCase("off") ? Prism.bots().stopFollow(a[0]) : Prism.bots().follow(a[0], a[1]);
+            if (err != null) ChatUtil.error(err);
+            else ChatUtil.info(a[1].equalsIgnoreCase("off") ? "§f" + a[0] + "§7 stopped following" : "§f" + a[0] + "§7 following §f" + a[1]);
+        }, "pf", "botfollow"));
+        add(new Command("playerdrop", "playerdrop <bot|all> <slot 1-9|all> [qty|max]", "Drop items from your bot(s): a hotbar slot 1-9 or all, a quantity or max (default max).", a -> {
+            if (a.length < 2) throw new IllegalArgumentException("Usage: .playerdrop <bot|all> <slot 1-9|all> [qty|max]");
+            String err = Prism.bots().drop(a[0], a[1], a.length > 2 ? a[2] : "max");
+            if (err != null) ChatUtil.error(err);
+            else ChatUtil.info("§f" + a[0] + "§7 dropped §f" + a[1]);
+        }, "pd", "botdrop"));
+        add(new Command("viewplayerbotinventory", "viewplayerbotinventory <bot>", "Show what one of your bots is holding (no switching).", a -> {
+            if (a.length < 1) throw new IllegalArgumentException("Usage: .viewplayerbotinventory <bot>");
+            for (String line : Prism.bots().inventory(a[0])) ChatUtil.info(line);
+        }, "botinv", "vpbi"));
+        add(new Command("goto", "goto <player>", "Teleport to a loaded player via position packets. [no-anticheat servers only; Grim/NCP will setback]", a -> {
+            if (a.length < 1) throw new IllegalArgumentException("Usage: .goto <player>");
+            if (mc.player == null || mc.level == null) { ChatUtil.error("Join a world first"); return; }
+            net.minecraft.world.entity.player.Player target = null;
+            double best = Double.MAX_VALUE;
+            for (net.minecraft.world.entity.player.Player p : mc.level.players()) {
+                if (p == mc.player || !p.getGameProfile().name().equalsIgnoreCase(a[0])) continue;
+                double d = p.distanceTo(mc.player);
+                if (d < best) { best = d; target = p; }
+            }
+            if (target == null) { ChatUtil.error("No loaded player called " + a[0] + " (they must be within render distance)"); return; }
+            Prism.modules().get(dev.prismglass.module.movement.ClickTP.class).teleport(target.position());
+            ChatUtil.good("Teleported to \u00a7f" + target.getGameProfile().name() + "\u00a77 (" + Math.round(best) + "m)");
+        }, "tpto"));
         add(new Command("fakeplayer", "fakeplayer [name]", "Client-side dummy (your skin and gear) next to you; nobody else sees it. Target practice.", a -> {
             String name = a.length > 0 ? a[0] : Prism.fakePlayers().randomName();
             String err = Prism.fakePlayers().join(name);
@@ -396,6 +467,70 @@ public final class CommandManager {
                 }
             }
         }, "proxies", "px"));
+        add(new Command("macro", "macro add <name> <line> | set <name> <line; line...> | del <name> [line#] | bind <name> <key> | run <name> | show <name> | list",
+            "Macros: lines run one per tick (.command, /server command, chat, !wait <ticks>). Binds also in ClickGUI > Keybinds.", a -> {
+            var mm = Prism.macros();
+            String sub = a.length == 0 ? "list" : a[0].toLowerCase(java.util.Locale.ROOT);
+            String rest = a.length > 2 ? String.join(" ", Arrays.copyOfRange(a, 2, a.length)) : "";
+            switch (sub) {
+                case "add" -> {
+                    if (rest.isBlank()) throw new IllegalArgumentException("Missing line");
+                    var m = mm.getOrCreate(arg(a, 1));
+                    m.lines.add(rest);
+                    mm.save();
+                    ChatUtil.good("Macro " + m.name + ": line " + m.lines.size() + " added");
+                }
+                case "set" -> {
+                    if (rest.isBlank()) throw new IllegalArgumentException("Missing lines (split them with ;)");
+                    var m = mm.getOrCreate(arg(a, 1));
+                    m.lines.clear();
+                    for (String l : rest.split(";")) if (!l.isBlank()) m.lines.add(l.trim());
+                    mm.save();
+                    ChatUtil.good("Macro " + m.name + ": " + m.lines.size() + " line(s)");
+                }
+                case "del", "remove" -> {
+                    var m = mm.get(arg(a, 1));
+                    if (m == null) throw new IllegalArgumentException("No macro " + a[1]);
+                    if (a.length > 2) {
+                        int n = Integer.parseInt(a[2]);
+                        if (n < 1 || n > m.lines.size()) throw new IllegalArgumentException("Line 1-" + m.lines.size());
+                        m.lines.remove(n - 1);
+                        ChatUtil.good("Macro " + m.name + ": removed line " + n);
+                    } else {
+                        mm.remove(m.name);
+                        ChatUtil.good("Removed macro " + m.name);
+                    }
+                    mm.save();
+                }
+                case "bind" -> {
+                    var m = mm.get(arg(a, 1));
+                    if (m == null) throw new IllegalArgumentException("No macro " + a[1]);
+                    int key = KeyUtil.fromName(arg(a, 2));
+                    if (key == Integer.MIN_VALUE) throw new IllegalArgumentException("Unknown key " + a[2]);
+                    m.key.set(key);
+                    mm.save();
+                    ChatUtil.good("Bound macro " + m.name + " to " + KeyUtil.name(key));
+                }
+                case "run" -> { if (!mm.run(arg(a, 1))) throw new IllegalArgumentException("No macro " + a[1] + " (or it's empty)"); }
+                case "stop" -> { mm.stop(); ChatUtil.info("Macro stopped"); }
+                case "show" -> {
+                    var m = mm.get(arg(a, 1));
+                    if (m == null) throw new IllegalArgumentException("No macro " + a[1]);
+                    ChatUtil.info("§f" + m.name + " §7[" + KeyUtil.name(m.key.get()) + "]");
+                    for (int i = 0; i < m.lines.size(); i++) ChatUtil.info("  §8" + (i + 1) + ". §f" + m.lines.get(i));
+                }
+                case "list" -> mm.list();
+                default -> throw new IllegalArgumentException("Unknown action " + a[0]);
+            }
+        }, "macros", "m"));
+        add(new Command("reconnect", "reconnect", "Rejoin the last server you connected to.", a -> {
+            if (!dev.prismglass.module.client.AutoReconnect.reconnect()) throw new IllegalArgumentException("No server joined yet this session");
+        }, "rc"));
+        add(new Command("addons", "addons", "List loaded Prism addons.", a -> {
+            var list = dev.prismglass.api.Addons.loaded();
+            if (list.isEmpty()) { ChatUtil.info("No addons. Mods with a \"prismglass\" entrypoint show up here."); return; }
+            for (var ad : list) ChatUtil.info((ad.ok() ? "§a" : "§c") + ad.name() + " §7" + ad.version() + " §8(" + ad.modId() + ")" + (ad.ok() ? "" : " §c" + ad.error()));
+        }, "addon"));
         add(new Command("coords", "coords", "Copy your coordinates.", a -> {
             String c = String.format("%d %d %d", mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ());
             mc.keyboardHandler.setClipboard(c);
@@ -460,6 +595,11 @@ public final class CommandManager {
         return new Completion(start, filter(options, partial), prefix + c.usage(), c.description(), false);
     }
 
+    private static List<String> warmStructureNames(List<String> options) {
+        dev.prismglass.xray.StructurePredictor.structureIds();
+        return options;
+    }
+
     private List<String> argOptions(String cmd, String[] a) {
         int i = a.length;
         return switch (cmd) {
@@ -497,11 +637,28 @@ public final class CommandManager {
             }
             case "elytrabot" -> i == 0 ? List.of("stop") : List.of();
             case "seed" -> i == 0 ? List.of("clear") : List.of();
+            case "crack" -> i == 0 ? List.of("reset", "retry") : List.of();
+            // typing .sf starts building the structure/biome names in the background, so they're there by "find "
+            case "structurefinder" -> i == 0 ? warmStructureNames(List.of("find", "stop")) : i == 1 && a[0].equalsIgnoreCase("find")
+                ? dev.prismglass.module.world.StructureFinder.findNames() : List.of();
             case "plugins" -> i == 0 ? List.of("probe", "deep", "last", "why", "reload") : i == 1 && a[0].equalsIgnoreCase("why") ? Prism.modules().get(dev.prismglass.module.world.PluginScanner.class).result().plugins.stream().map(f -> f.name()).toList() : List.of();
             case "leaveplayer" -> { if (i != 0) yield List.of(); List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
             case "sayplayer" -> { if (i != 0) yield List.of("/"); List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
             case "fakeleave" -> i == 0 ? Prism.fakePlayers().names() : List.of();
-            case "switchplayer" -> i == 0 ? Prism.bots().names() : i == 1 ? List.of("drop") : List.of();
+            case "switchplayer" -> i == 0 ? Prism.bots().names() : List.of("drop", "fast");
+            case "playerfollow" -> {
+                if (i == 0) { List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
+                if (i == 1) { List<String> l = new java.util.ArrayList<>(playerNames()); l.add("off"); yield l; }
+                yield List.of();
+            }
+            case "playerdrop" -> {
+                if (i == 0) { List<String> l = new java.util.ArrayList<>(Prism.bots().names()); l.add("all"); yield l; }
+                if (i == 1) yield List.of("all", "1", "2", "3", "4", "5", "6", "7", "8", "9");
+                if (i == 2) yield List.of("max", "1", "16", "64");
+                yield List.of();
+            }
+            case "viewplayerbotinventory" -> i == 0 ? Prism.bots().names() : List.of();
+            case "goto" -> i == 0 ? playerNames() : List.of();
             case "joinplayer" -> i == 1 ? List.of("true", "false") : List.of();
             case "proxy" -> {
                 if (i == 0) yield List.of("list", "add", "del", "use", "off", "tor", "ip", "account");
@@ -529,6 +686,12 @@ public final class CommandManager {
                 };
             }
             case "spamdupe" -> i == 0 ? List.of("stop", "5", "10", "50") : List.of();
+            case "dupe" -> {
+                if (i > 0) yield List.of();
+                List<String> l = new java.util.ArrayList<>(dev.prismglass.module.anarchy.PluginDupe.PRESETS.keySet());
+                l.add("list"); l.add("stop");
+                yield l;
+            }
             case "follow" -> { if (i > 0) yield List.of(); List<String> l = new java.util.ArrayList<>(playerNames()); l.add("off"); yield l; }
             case "ai" -> {
                 var known = Prism.modules().get(dev.prismglass.module.service.DamageAILearn.class).known();
@@ -542,7 +705,17 @@ public final class CommandManager {
                 if (i == 2 && a[0].equalsIgnoreCase("add")) yield List.of("circle", "sphere", "cuboid");
                 yield List.of();
             }
-            default -> List.of();
+            case "macro" -> {
+                if (i == 0) yield List.of("add", "set", "del", "remove", "bind", "run", "stop", "show", "list");
+                if (i == 1 && !a[0].equalsIgnoreCase("list") && !a[0].equalsIgnoreCase("stop")) yield Prism.macros().all().stream().map(m -> m.name).toList();
+                if (i == 2 && a[0].equalsIgnoreCase("bind")) yield KEYS;
+                yield List.of();
+            }
+            default -> {
+                var f = completers.get(cmd);
+                if (f == null) yield List.of();
+                try { yield f.apply(a); } catch (RuntimeException e) { yield List.of(); }
+            }
         };
     }
 

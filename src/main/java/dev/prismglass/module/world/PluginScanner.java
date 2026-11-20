@@ -89,6 +89,9 @@ public class PluginScanner extends Module {
     public final BoolSetting chatOutput = bool("ChatOutput", true, "Print the result in chat (hover a plugin for its evidence, click the list to copy it).");
     public final BoolSetting hud = bool("Hud", false, "Show the plugin list on the HUD (drag it in the HUD editor).");
     public final NumberSetting hudLines = num("HudLines", 12, 1, 40, 1, "Plugins shown on the HUD before \"+n more\".").visibleWhen(hud::get);
+    public final BoolSetting advice = bool("Advice", true, "After a scan, say what the findings mean for your other modules (anticheat preset, vanish, anti-xray, dupe presets).");
+    public final BoolSetting autoSetup = bool("AutoSetup", false, "Apply the advice: AntiCheat preset for the detected anticheat, StaffWatcher on for vanish plugins, SusChunks Light method on anti-xray servers.").visibleWhen(advice::get);
+    public final BoolSetting history = bool("History", true, "Remember each server's plugins (prism/plugin_history.json) and say what changed since your last visit.");
 
     /** Used in the tab-complete requests so the replies can be told apart from the chat box's own. */
     private static final int SCAN_ID_BASE = 0x5052_0000; // "PR" + index
@@ -425,6 +428,136 @@ public class PluginScanner extends Module {
         last = null;
         recompute();
         report();
+        if (history.get()) compareHistory(result());
+        if (advice.get()) advise(result(), chatOutput.get());
+    }
+
+    // ---- advice: what the findings mean for the rest of the client ---------------------------------------
+
+    /** Lines of the last advice (dev test). */
+    public final List<String> adviceLines = new ArrayList<>();
+
+    /** Which PluginDupe preset fits a storage / market plugin (by signature id), null for none. */
+    public static String dupePreset(Finding f) {
+        if (f.sig == null) return null;
+        String id = f.sig.id();
+        return switch (id) {
+            case "playervaults", "axvaults", "minepacks", "backpacks" -> "VaultKick";
+            case "shulkerpacks", "bettershulkerboxes", "axshulkers" -> "ShulkerKick";
+            case "enderchestplus" -> "EChestKick"; // Essentials/CMI /ec is the vanilla ender chest: saved with you, no race
+            case "tradesystem", "tradeplus", "axtrade" -> "CloseRace";
+            default -> f.kind().equals("market") ? "SpamClick" : null;
+        };
+    }
+
+    /** Advice lines (printed when {@code print}), applied too with AutoSetup. */
+    public void advise(ScanResult r, boolean print) {
+        adviceLines.clear();
+        List<Finding> all = new ArrayList<>();
+        for (Finding f : r.plugins) if (f.confidence().ordinal() >= Confidence.MEDIUM.ordinal()) all.add(f);
+        for (Finding f : r.builtins) if (f.confidence().ordinal() >= Confidence.MEDIUM.ordinal()) all.add(f);
+        boolean apply = autoSetup.get();
+
+        Finding ac = null;
+        for (Finding f : r.anticheats) if (f.confidence().ordinal() >= Confidence.MEDIUM.ordinal() && (ac == null || f.score() > ac.score())) ac = f;
+        if (ac != null) {
+            String n = ac.name().toLowerCase(Locale.ROOT);
+            String preset = n.contains("grim") ? "Grim" : n.contains("nocheatplus") ? "NCP" : n.contains("vulcan") ? "Vulcan" : null;
+            var acm = Prism.modules().get(dev.prismglass.module.client.AntiCheat.class);
+            if (preset == null) adviceLines.add("Anticheat " + ac.name() + ": no tuned preset, Grim is the safest one to use.");
+            else if (!acm.preset.is(preset)) {
+                adviceLines.add("Anticheat " + ac.name() + " -> AntiCheat preset §f" + preset + (apply ? " §a(set)" : ""));
+                if (apply) acm.preset.parse(preset);
+            }
+        }
+        List<String> vanish = names(all, "vanish"), staff = names(all, "staff");
+        if (!vanish.isEmpty() || !staff.isEmpty()) {
+            var sw = Prism.modules().get(dev.prismglass.module.client.StaffWatcher.class);
+            List<String> both = new ArrayList<>(vanish); both.addAll(staff);
+            adviceLines.add("Staff tools " + String.join(", ", both) + " -> keep StaffWatcher + AntiVanish on" + (apply && !sw.isEnabled() ? " §a(on)" : ""));
+            if (apply) { sw.antiVanish.set(true); if (!sw.isEnabled()) sw.setEnabled(true); }
+        }
+        List<String> antiXray = new ArrayList<>();
+        for (Finding f : all) if (f.sig != null && f.sig.id().equals("orebfuscator")) antiXray.add(f.name());
+        if (!antiXray.isEmpty()) {
+            var sus = Prism.modules().get(SusChunks.class);
+            adviceLines.add("Anti-xray (" + String.join(", ", antiXray) + ") -> SusChunks Method §fLight§7, Xray Seed mode" + (apply ? " §a(set)" : ""));
+            if (apply) sus.method.parse("Light");
+        }
+        List<String> fixers = names(all, "exploit-fix");
+        if (!fixers.isEmpty()) adviceLines.add("§c" + String.join(", ", fixers) + "§7 patches dupes here: dupe modules will most likely fail.");
+        Map<String, List<String>> dupes = new LinkedHashMap<>();
+        for (Finding f : all) {
+            String preset = dupePreset(f);
+            if (preset != null) dupes.computeIfAbsent(preset, k -> new ArrayList<>()).add(f.name());
+        }
+        for (var e : dupes.entrySet())
+            adviceLines.add(String.join(", ", e.getValue()) + " -> PluginDupe §f" + e.getKey() + "§7 (.dupe " + e.getKey().toLowerCase(Locale.ROOT) + ")");
+        if (print) for (String l : adviceLines) ChatUtil.info("§bAdvice: §7" + l);
+    }
+
+    private static List<String> names(List<Finding> list, String kind) {
+        List<String> out = new ArrayList<>();
+        for (Finding f : list) if (f.kind().equals(kind)) out.add(f.name());
+        return out;
+    }
+
+    // ---- history: what changed since the last visit -------------------------------------------------------
+
+    /** The last history comparison: {added, removed} (dev test). */
+    public List<String> lastAdded = List.of(), lastRemoved = List.of();
+
+    private static java.nio.file.Path historyFile() {
+        return FabricLoader.getInstance().getGameDir().resolve("prism").resolve("plugin_history.json");
+    }
+
+    /** Compares this scan with the one saved for this server, prints the difference and saves this one. */
+    public void compareHistory(ScanResult r) {
+        String server = serverKey();
+        if (server == null) return;
+        List<String> now = new ArrayList<>();
+        for (Finding f : r.plugins) if (f.confidence().ordinal() >= Confidence.MEDIUM.ordinal()) now.add(f.name());
+        Collections.sort(now);
+        com.google.gson.JsonObject root = new com.google.gson.JsonObject();
+        try {
+            if (java.nio.file.Files.exists(historyFile()))
+                root = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(historyFile())).getAsJsonObject();
+        } catch (Exception e) { Prism.LOG.warn("plugin history unreadable, starting over", e); }
+        com.google.gson.JsonObject entry = root.has(server) ? root.getAsJsonObject(server) : null;
+        lastAdded = List.of(); lastRemoved = List.of();
+        if (entry != null && entry.has("plugins")) {
+            Set<String> before = new TreeSet<>();
+            for (var e : entry.getAsJsonArray("plugins")) before.add(e.getAsString());
+            List<String> added = new ArrayList<>(), removed = new ArrayList<>();
+            for (String n : now) if (!before.contains(n)) added.add(n);
+            for (String n : before) if (!now.contains(n)) removed.add(n);
+            lastAdded = added; lastRemoved = removed;
+            String when = entry.has("seen") ? entry.get("seen").getAsString() : "?";
+            if (chatOutput.get()) {
+                if (added.isEmpty() && removed.isEmpty()) ChatUtil.info("Since your last visit (" + when + "): §fno plugin changes");
+                else ChatUtil.info("Since your last visit (" + when + "):" + (added.isEmpty() ? "" : " §a+" + String.join(", +", added))
+                    + (removed.isEmpty() ? "" : " §c-" + String.join(", -", removed)));
+            }
+        }
+        com.google.gson.JsonObject neu = new com.google.gson.JsonObject();
+        neu.addProperty("seen", java.time.LocalDate.now().toString());
+        com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+        for (String n : now) arr.add(n);
+        neu.add("plugins", arr);
+        root.add(server, neu);
+        try {
+            java.nio.file.Files.createDirectories(historyFile().getParent());
+            java.nio.file.Files.writeString(historyFile(), new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root));
+        } catch (Exception e) { Prism.LOG.warn("could not save plugin history", e); }
+    }
+
+    /** Test hook: overrides the server address used as the history key. */
+    public String historyKeyOverride;
+
+    private String serverKey() {
+        if (historyKeyOverride != null) return historyKeyOverride;
+        ServerData sd = mc.getCurrentServer();
+        return sd == null || sd.ip == null ? null : sd.ip.toLowerCase(Locale.ROOT);
     }
 
     // ---- results ---------------------------------------------------------------------------------------

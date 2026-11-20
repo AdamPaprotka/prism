@@ -10,7 +10,8 @@
 //   id        unique key
 //   name      the plugin's real name (also how /version and /plugins print it)
 //   kind      anticheat | permissions | admin | protection | world | economy | chat | auth | library | protocol |
-//             proxy | software | command-filter | profiler | mod-support | plugin
+//             proxy | software | command-filter | profiler | mod-support | plugin |
+//             vanish | staff | exploit-fix | storage | market   (these five feed PluginScanner's advice)
 //   ns        namespaces the plugin registers commands under: "luckperms" for "luckperms:lp" (one hit = high confidence)
 //   cmds      distinctive command names, no leading slash ("/wand" for WorldEdit's //wand): one hit is a good sign
 //   weak      names other plugins also use: they only add up to a low/medium sign
@@ -78,7 +79,8 @@
      "weak": ["sethome", "delhome", "setwarp", "delwarp", "tpa", "home", "homes", "warp", "warps", "back", "spawn", "setspawn", "nick", "afk", "seen", "mail", "kit", "kits",
               "god", "fly", "heal", "feed", "vanish", "repair", "hat", "ptime", "pweather", "jail", "mute", "tempban", "banip", "unbanip", "baltop", "balance", "bal", "pay"],
      "note": "Weak command matches fit EssentialsX, CMI and similar suites alike."},
-    {"id": "cmi", "name": "CMI", "kind": "admin", "ns": ["cmi", "cmilib"], "cmds": ["cmi"]},
+    {"id": "cmi", "name": "CMI", "kind": "admin", "ns": ["cmi"], "cmds": ["cmi"]},
+    {"id": "cmilib", "name": "CMILib", "kind": "library", "ns": ["cmilib"], "note": "Library for Zrips' plugins (Jobs, CMI...): on its own it is not CMI."},
     {"id": "litebans", "name": "LiteBans", "kind": "admin", "ns": ["litebans"], "cmds": ["litebans", "staffhistory", "dupeip", "checkban", "lastuuid", "togglebans"], "probe": "litebans"},
     {"id": "advancedban", "name": "AdvancedBan", "kind": "admin", "ns": ["advancedban"], "cmds": ["advancedban"]},
     {"id": "coreprotect", "name": "CoreProtect", "kind": "admin", "ns": ["coreprotect"], "cmds": ["coreprotect", "co", "core"], "probe": "co", "priority": 85},
@@ -133,6 +135,54 @@
     {"id": "nlogin", "name": "nLogin", "kind": "auth", "ns": ["nlogin"], "cmds": ["nlogin"]},
     {"id": "fastlogin", "name": "FastLogin", "kind": "auth", "ns": ["fastlogin"], "cmds": ["fastlogin"], "weak": ["premium", "cracked"]},
     {"id": "skinsrestorer", "name": "SkinsRestorer", "kind": "auth", "ns": ["skinsrestorer"], "cmds": ["skinsrestorer", "sr"], "weak": ["skin", "skins"]},
+
+    // ---- vanish and staff tools (StaffWatcher advice) ------------------------------------------------------------
+    {"id": "supervanish", "name": "SuperVanish", "kind": "vanish", "ns": ["supervanish"], "cmds": ["supervanish", "sv"], "weak": ["vanish", "v"], "priority": 70},
+    {"id": "premiumvanish", "name": "PremiumVanish", "kind": "vanish", "ns": ["premiumvanish"], "cmds": ["premiumvanish"], "weak": ["vanish", "v", "pv"], "priority": 70},
+    {"id": "vanishnopacket", "name": "VanishNoPacket", "kind": "vanish", "ns": ["vanishnopacket"], "cmds": ["vanishnopacket", "vnp"], "weak": ["vanish", "v"]},
+    {"id": "advancedvanish", "name": "AdvancedVanish", "kind": "vanish", "ns": ["advancedvanish"], "cmds": ["advancedvanish"], "weak": ["vanish", "v", "av"]},
+    {"id": "sayanvanish", "name": "SayanVanish", "kind": "vanish", "ns": ["sayanvanish"], "cmds": ["sayanvanish"], "weak": ["vanish", "v"]},
+    {"id": "staffplusplus", "name": "StaffPlusPlus", "kind": "staff", "ns": ["staffplusplus", "staffplus"], "cmds": ["staffplusplus", "staffmode"], "weak": ["freeze", "staff", "cps", "examine"]},
+    {"id": "openinv", "name": "OpenInv", "kind": "staff", "ns": ["openinv"], "cmds": ["openinv", "openender", "searchinv", "searchender", "silentcontainer", "anycontainer"]},
+    {"id": "invseeplusplus", "name": "InvSee++", "kind": "staff", "ns": ["invseeplusplus", "invsee++"], "cmds": ["invseeplusplus"], "weak": ["invsee", "endersee"]},
+    {"id": "libertybans", "name": "LibertyBans", "kind": "admin", "ns": ["libertybans"], "cmds": ["libertybans"], "weak": ["mute", "warn"]},
+    {"id": "banmanager", "name": "BanManager", "kind": "admin", "ns": ["banmanager"], "cmds": ["bminfo", "bmreload", "banmanager"]},
+    {"id": "plan", "name": "Plan", "kind": "profiler", "ns": ["plan"], "cmds": ["plan"]},
+
+    // ---- exploit fixers (they patch dupes and illegals) -----------------------------------------------------------
+    {"id": "aef", "name": "AnarchyExploitFixes", "kind": "exploit-fix", "ns": ["anarchyexploitfixes"], "cmds": ["aef", "anarchyexploitfixes"], "priority": 60,
+     "note": "Patches dupes, book bans, illegal items and elytra/boat speeds on anarchy servers."},
+    {"id": "illegalstack", "name": "IllegalStack", "kind": "exploit-fix", "ns": ["illegalstack"], "cmds": ["istack", "illegalstack"], "note": "Patches most known dupes and removes illegal stacks."},
+    {"id": "exploitfixer", "name": "ExploitFixer", "kind": "exploit-fix", "ns": ["exploitfixer"], "cmds": ["exploitfixer"]},
+    {"id": "lpx", "name": "LPX AntiCrash", "kind": "exploit-fix", "ns": ["lpx"], "cmds": ["lpx"], "note": "Packet limiter / anti-crash."},
+    {"id": "dupepatch", "name": "Dupe patches (generic)", "kind": "exploit-fix", "ns": ["dupefix", "antidupe", "dupepatch", "nodupe"], "cmds": ["antidupe", "dupefix"]},
+
+    // ---- storage plugins (dupe races: vault save vs player save) ------------------------------------------------
+    {"id": "playervaults", "name": "PlayerVaults", "kind": "storage", "ns": ["playervaults", "playervaultsx"], "cmds": ["playervaults", "pvdel", "pvconvert", "workbench"], "weak": ["pv", "vault", "vaults", "chest"]},
+    {"id": "axvaults", "name": "AxVaults", "kind": "storage", "ns": ["axvaults"], "cmds": ["axvaults", "axvaultsadmin"], "weak": ["vault", "vaults", "pv"]},
+    {"id": "minepacks", "name": "Minepacks", "kind": "storage", "ns": ["minepacks"], "cmds": ["minepacks"], "weak": ["backpack", "bp"]},
+    {"id": "backpacks", "name": "Backpacks (generic)", "kind": "storage", "ns": ["backpacks", "betterbackpacks", "advancedbackpacks", "backpackplus"], "cmds": ["backpacks"], "weak": ["backpack", "bp"]},
+    {"id": "shulkerpacks", "name": "ShulkerPacks", "kind": "storage", "ns": ["shulkerpacks"], "cmds": ["shulkerpacks"], "note": "Opens shulker boxes from the hand."},
+    {"id": "bettershulkerboxes", "name": "BetterShulkerBoxes", "kind": "storage", "ns": ["bettershulkerboxes"], "cmds": ["bettershulkerboxes"], "note": "Opens shulker boxes from the hand."},
+    {"id": "axshulkers", "name": "AxShulkers", "kind": "storage", "ns": ["axshulkers"], "cmds": ["axshulkers"], "note": "Opens shulker boxes from the hand."},
+    {"id": "enderchestplus", "name": "Ender chest plugins", "kind": "storage", "ns": ["enderchestplus", "betterenderchest", "axenderchests", "enderplus"], "cmds": ["betterenderchest"], "weak": ["ec", "enderchest", "echest"]},
+
+    // ---- markets: auctions, trades, shops (click races) -----------------------------------------------------------
+    {"id": "auctionhouse", "name": "AuctionHouse", "kind": "market", "ns": ["auctionhouse"], "cmds": ["auctionhouse"], "weak": ["ah", "auction"]},
+    {"id": "zauctionhouse", "name": "zAuctionHouse", "kind": "market", "ns": ["zauctionhouse", "zauctionhousev3"], "cmds": ["zauctionhouse", "zah"], "weak": ["ah", "auction"]},
+    {"id": "crazyauctions", "name": "CrazyAuctions", "kind": "market", "ns": ["crazyauctions"], "cmds": ["crazyauctions"], "weak": ["ah", "ca"]},
+    {"id": "axauctions", "name": "AxAuctions", "kind": "market", "ns": ["axauctions"], "cmds": ["axauctions", "axauctionsadmin"], "weak": ["ah"]},
+    {"id": "playerauctions", "name": "PlayerAuctions", "kind": "market", "ns": ["playerauctions"], "cmds": ["playerauctions"], "weak": ["auction", "pa"]},
+    {"id": "tradesystem", "name": "TradeSystem", "kind": "market", "ns": ["tradesystem"], "cmds": ["tradesystem"], "weak": ["trade"]},
+    {"id": "tradeplus", "name": "TradePlus", "kind": "market", "ns": ["tradeplus"], "cmds": ["tradeplus"], "weak": ["trade"]},
+    {"id": "axtrade", "name": "AxTrade", "kind": "market", "ns": ["axtrade"], "cmds": ["axtrade"], "weak": ["trade"]},
+    {"id": "economyshopgui", "name": "EconomyShopGUI", "kind": "market", "ns": ["economyshopgui", "economyshopgui-premium"], "cmds": ["economyshopgui", "eshop", "editshop"], "weak": ["shop", "sell", "sellall"]},
+    {"id": "shopkeepers", "name": "Shopkeepers", "kind": "market", "ns": ["shopkeepers", "shopkeeper"], "cmds": ["shopkeepers", "shopkeeper"]},
+    {"id": "deluxesellwands", "name": "DeluxeSellwands", "kind": "market", "ns": ["deluxesellwands"], "cmds": ["deluxesellwands"], "weak": ["sellwand"]},
+    {"id": "excellentcrates", "name": "ExcellentCrates", "kind": "market", "ns": ["excellentcrates"], "cmds": ["excellentcrates"], "weak": ["crate", "crates", "key"]},
+    {"id": "crazycrates", "name": "CrazyCrates", "kind": "market", "ns": ["crazycrates"], "cmds": ["crazycrates"], "weak": ["crate", "crates", "cc", "key"]},
+    {"id": "deluxemenus", "name": "DeluxeMenus", "kind": "plugin", "ns": ["deluxemenus"], "cmds": ["deluxemenus"], "weak": ["dm", "menu"]},
+    {"id": "duels", "name": "Duels", "kind": "plugin", "ns": ["duels"], "cmds": ["duels"], "weak": ["duel"]},
 
     // ---- version translation / Bedrock --------------------------------------------------------------------------
     {"id": "viaversion", "name": "ViaVersion", "kind": "protocol", "ns": ["viaversion"], "cmds": ["viaversion", "viaver", "vvbukkit"], "probe": "viaversion", "priority": 80,

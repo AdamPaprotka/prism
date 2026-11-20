@@ -25,3 +25,7 @@ desktop.ini
 
 # Logs
 *.log
+
+# log archives (the *.log rule misses gzipped logs)
+logs/
+*.log.gz

@@ -52,7 +52,10 @@ public final class ModuleManager {
         java.util.Map.entry("wallhack", "Xray"),
         java.util.Map.entry("expthrower", "AutoXP"),
         java.util.Map.entry("mazekill", "TunnelKill"),
-        java.util.Map.entry("middleclickextra", "MiddleClick"));
+        java.util.Map.entry("middleclickextra", "MiddleClick"),
+        java.util.Map.entry("miningfatigue", "FatigueAnim"),
+        java.util.Map.entry("slowanims", "FatigueAnim"),
+        java.util.Map.entry("noclip", "Phase"));
 
     public Module get(String name) {
         for (Module m : modules) if (m.getName().equalsIgnoreCase(name)) return m;

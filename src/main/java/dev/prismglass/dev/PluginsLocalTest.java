@@ -61,6 +61,7 @@ final class PluginsLocalTest {
 
     /** One phase: mutate the server, wait, optionally scan, wait for the scan, judge. */
     private record Phase(String name, Runnable setup, int delay, Runnable go, Consumer<ScanResult> judge) {}
+    private static ScanResult firstResult;
 
     private static final List<Phase> phases = new ArrayList<>();
     private static int ticks, t, idx, phaseTick;
@@ -156,6 +157,7 @@ final class PluginsLocalTest {
             }, 20, () -> { quiet(sc, false, false, false, false, "Off"); sc.scan(false); },
             r -> {
                 log("passive: " + sc.plugins());
+                firstResult = r;
                 check("passive: the namespaces in the tree are found", sc.plugins().equals(List.of("CoreProtect", "mycustomplugin", "WorldEdit")));
                 check("passive: database names (CoreProtect, WorldEdit) and the unknown namespace kept as typed",
                     r.find("CoreProtect") != null && r.find("WorldEdit") != null && r.find("mycustomplugin") != null && r.find("mycustomplugin").sig == null);
@@ -361,6 +363,42 @@ final class PluginsLocalTest {
                 check("command: the aliases exist", Prism.commands().complete(".pl") != null);
                 check("HUD: the panel is registered with the HUD editor", hudHasPanel());
                 Screenshot.grab(mc.gameDirectory, "prism-plugins.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
+            }));
+
+        // 13) advice + AutoSetup + history (1.6.4)
+        phases.add(new Phase("advice, AutoSetup, history",
+            () -> {
+                onServer(() -> {
+                    MinecraftServer s = mc.getSingleplayerServer();
+                    for (String n : List.of("playervaults:pv", "supervanish:sv", "anarchyexploitfixes:aef", "grimac:grim", "auctionhouse:ah", "shulkerpacks:shulkerpacks"))
+                        fake(s, n);
+                    s.getCommands().sendCommands(s.getPlayerList().getPlayers().get(0));
+                });
+                Prism.modules().get(AntiCheat.class).preset.parse("NCP");
+                Prism.modules().get(dev.prismglass.module.client.StaffWatcher.class).setEnabled(false);
+                sc.autoSetup.set(true);
+                sc.historyKeyOverride = "prismtest-" + System.nanoTime();
+            }, 10, () -> { quiet(sc, true, false, false, false, "Off"); sc.scan(false); },
+            r -> {
+                for (String l : sc.adviceLines) log("advice: " + l.replaceAll("\u00A7.", ""));
+                String all = String.join("\n", sc.adviceLines);
+                check("advice: vault plugin -> VaultKick", all.contains("PlayerVaults") && all.contains("VaultKick"));
+                check("advice: shulker plugin -> ShulkerKick, auction -> SpamClick", all.contains("ShulkerKick") && all.contains("SpamClick"));
+                check("advice: exploit fixer warns that dupes will fail", all.contains("AnarchyExploitFixes"));
+                check("advice: vanish plugin -> StaffWatcher", all.contains("SuperVanish") && all.contains("StaffWatcher"));
+                check("AutoSetup: AntiCheat preset switched NCP -> Grim", Prism.modules().get(AntiCheat.class).preset.is("Grim"));
+                check("AutoSetup: StaffWatcher turned on", Prism.modules().get(dev.prismglass.module.client.StaffWatcher.class).isEnabled());
+                check("history: first visit has no diff", sc.lastAdded.isEmpty() && sc.lastRemoved.isEmpty());
+                sc.compareHistory(r);
+                check("history: same plugins again = no change", sc.lastAdded.isEmpty() && sc.lastRemoved.isEmpty());
+                sc.compareHistory(firstResult);
+                log("history removed: " + sc.lastRemoved);
+                check("history: plugins gone since last visit are listed", sc.lastRemoved.contains("PlayerVaults") && sc.lastRemoved.contains("SuperVanish"));
+                sc.compareHistory(r);
+                check("history: and come back as added", sc.lastAdded.contains("PlayerVaults"));
+                sc.autoSetup.set(false);
+                sc.historyKeyOverride = null;
+                Prism.modules().get(dev.prismglass.module.client.StaffWatcher.class).setEnabled(false);
             }));
     }
 

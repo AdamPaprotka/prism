@@ -43,6 +43,7 @@ public class Prism implements ClientModInitializer {
     private static dev.prismglass.manager.AccountManager accounts;
     private static dev.prismglass.manager.ProxyManager proxies;
     private static dev.prismglass.manager.BotPlayers bots;
+    private static dev.prismglass.manager.Macros macros;
 
     private static int autosaveTicks;
     private static final boolean COMBAT_TEST = Boolean.getBoolean("prismglass.combattest");
@@ -64,11 +65,15 @@ public class Prism implements ClientModInitializer {
         accounts = new dev.prismglass.manager.AccountManager();
         proxies = new dev.prismglass.manager.ProxyManager();
         bots = new dev.prismglass.manager.BotPlayers();
+        macros = new dev.prismglass.manager.Macros();
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> bots.tick());
 
         ModuleRegistry.registerAll(modules);
         anticheat = modules.get(AntiCheat.class);
+        dev.prismglass.api.Addons.loadAll(); // before the config: addon module settings load with the profile
+        if (Boolean.getBoolean("prismglass.addontest")) dev.prismglass.dev.AddonTest.registerTestAddon();
         config.load();
+        macros.load();
         anticheat.markLoaded();
 
         // HUD is drawn from GameRendererMixin as the topmost GUI layer (see renderHud)
@@ -219,6 +224,8 @@ public class Prism implements ClientModInitializer {
         if (Boolean.getBoolean("prismglass.streamtest")) dev.prismglass.dev.StreamTest.install();
         if (Boolean.getBoolean("prismglass.fstest")) dev.prismglass.dev.FullscreenTest.install();
         if (Boolean.getBoolean("prismglass.structtest")) dev.prismglass.dev.StructureTest.install();
+        if (Boolean.getBoolean("prismglass.cracktest")) dev.prismglass.dev.SeedCrackTest.install();
+        if (Boolean.getBoolean("prismglass.cameratest")) dev.prismglass.dev.CameraTest.install();
         if (Boolean.getBoolean("prismglass.elytratest")) dev.prismglass.dev.ElytraTest.install();
         if (Boolean.getBoolean("prismglass.flighttest")) dev.prismglass.dev.FlightTest.install();
         if (Boolean.getBoolean("prismglass.hudtest")) dev.prismglass.dev.HudTest.install();
@@ -237,6 +244,7 @@ public class Prism implements ClientModInitializer {
         if (Boolean.getBoolean("prismglass.crystaltest")) dev.prismglass.dev.CrystalTest.install();
         if (Boolean.getBoolean("prismglass.elytrabottest")) dev.prismglass.dev.ElytraBotTest.install();
         if (Boolean.getBoolean("prismglass.grimtest")) dev.prismglass.dev.GrimTest.install();
+        if (Boolean.getBoolean("prismglass.addontest")) dev.prismglass.dev.AddonTest.install();
 
         // Dev check: -Dprismglass.audit=true force-applies every mixin at startup and exits,
         // so broken injection targets show up without having to join a world.
@@ -290,6 +298,7 @@ public class Prism implements ClientModInitializer {
         announceUpdate();
         BlockUtil.resetBudget();
         modules.onTick();
+        macros.tick();
         rotations.update();
         if (++autosaveTicks >= 20 * 120) {
             autosaveTicks = 0;
@@ -305,6 +314,7 @@ public class Prism implements ClientModInitializer {
         Render3D.begin(ctx);
         modules.onRender3D(ctx.poseStack(), delta);
         dev.prismglass.gui.render.PlayerHat.render(delta);
+        dev.prismglass.gui.render.DevPrism.render(delta);
         if (dev.prismglass.gui.render.Holo.active()) dev.prismglass.gui.render.Holo.renderWorld(ctx);
         Render3D.end();
     }
@@ -359,4 +369,5 @@ public class Prism implements ClientModInitializer {
     public static dev.prismglass.manager.AccountManager accounts() { return accounts; }
     public static dev.prismglass.manager.ProxyManager proxies() { return proxies; }
     public static dev.prismglass.manager.BotPlayers bots() { return bots; }
+    public static dev.prismglass.manager.Macros macros() { return macros; }
 }

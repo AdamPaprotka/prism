@@ -37,6 +37,8 @@ final class ModCases {
         registerBatch7();
         registerNoFall();
         ModCases8.register();
+        ModCases9.register();
+        ModCases10.register();
     }
 
     static void registerBatch12() {

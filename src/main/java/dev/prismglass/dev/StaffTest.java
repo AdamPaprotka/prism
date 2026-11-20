@@ -94,7 +94,7 @@ public final class StaffTest {
         Prism.modules().get(StaffWatcher.class).onPacketReceive(new PacketEvent(p));
     }
 
-    private static int popsBefore;
+    private static int popsBefore, logBefore;
 
     /** A system chat line, through both the real handler (shows in chat) and Prism's packet event. */
     private static void chat(String text) {
@@ -161,6 +161,8 @@ public final class StaffTest {
             sw.lookTime.parse("0.5");
             sw.cooldown.parse("5");
             sw.probeInterval.parse("2");
+            sw.autoLog.parse("Off"); // saved by an earlier run's AutoLog step
+            sw.dryRunLog = true;
             sw.setEnabled(true);
         }
         if (t == 30) {
@@ -292,7 +294,57 @@ public final class StaffTest {
             sw.onPacketReceive(new PacketEvent(p)); // a crop breaking: farms, not players
         }
         if (t == 700) check("chest next to a visible player and a crop break are ignored (ghostEvents=" + sw.ghostEvents + ")", sw.ghostEvents == 2);
-        if (t == 710) {
+        // ---- 1.6.4: ChatCheck, DespawnCheck, VanishTags, AutoLog, markers ----
+        if (t == 712) {
+            bots.get("Watcher").setInvisible(false); // its invisible alert would keep firing
+            tabUpdate(EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE,
+                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED), "Chatty", GameType.SURVIVAL, null, false); // connected, never listed
+            addTab("Tagged", Component.literal("[V] Tagged"));
+            addTab("Despawner", null);
+            sw.addStaff("Despawner");
+            spawn("Despawner", 4.5, -6.5, false);
+            addTab("Leaver", null);
+            spawn("Leaver", -4.5, -6.5, false);
+            popsBefore = sw.pops;
+        }
+        if (t == 716) {
+            var body = new net.minecraft.network.chat.SignedMessageBody.Packed("hi", java.time.Instant.now(), 0L, net.minecraft.network.chat.LastSeenMessages.Packed.EMPTY);
+            var bound = net.minecraft.network.chat.ChatType.bind(net.minecraft.network.chat.ChatType.CHAT, mc.level.registryAccess(), Component.literal("Chatty"));
+            sw.onPacketReceive(new PacketEvent(new net.minecraft.network.protocol.game.ClientboundPlayerChatPacket(0, id("Chatty"), 0, null, body, null,
+                net.minecraft.network.chat.FilterMask.PASS_THROUGH, bound)));
+        }
+        if (t == 720) {
+            check("ChatCheck: chat from a connected but unlisted player = vanished (last=" + sw.lastPopName + " " + sw.lastPopWhat + ")",
+                sw.lastPopName.equals("Chatty") && sw.lastPopWhat.contains("chatting"));
+            check("VanishTags: [V] in the tab name counts as staff: " + online(sw), online(sw).contains("Tagged (vanish tag)"));
+        }
+        if (t == 724) {
+            int eid = bots.get("Despawner").getId();
+            sw.onPacketReceive(new PacketEvent(new net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket(eid)));
+            despawn("Despawner");
+        }
+        if (t == 728) {
+            check("DespawnCheck: staff body removed 8 m away while still connected (last=" + sw.lastPopName + " " + sw.lastPopWhat + ")",
+                sw.lastPopName.equals("Despawner") && sw.lastPopWhat.contains("disappeared"));
+            check("markers placed for vanish spots (" + sw.markerCount() + ")", sw.markerCount() >= 2);
+            // AutoLog in Panic mode (no real disconnect in the test): a module goes off, StaffWatcher stays on
+            sw.dryRunLog = true;
+            sw.autoLog.parse("Both");
+            sw.logOn.parse("Vanish");
+            sw.logOnce.set(true);
+            Prism.modules().get(dev.prismglass.module.movement.Sprint.class).setEnabled(true);
+            logBefore = sw.logFired;
+        }
+        if (t == 760) removeTab("Leaver"); // listed > 1.5 s, body 8 blocks away, leaves without a message: vanish
+        if (t == 830) {
+            check("AutoLog fired once on the vanish (fired +" + (sw.logFired - logBefore) + ", last=" + sw.lastPopName + ")", sw.logFired == logBefore + 1);
+            check("AutoLog panic turned Sprint off, StaffWatcher stays on",
+                !Prism.modules().get(dev.prismglass.module.movement.Sprint.class).isEnabled() && sw.isEnabled());
+            check("AutoLog LogOnce set it back to Off", sw.autoLog.is("Off"));
+            mc.player.setYRot(180);
+        }
+        if (t == 836) net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-staffhud.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
+        if (t == 842) {
             log("RESULT passed=" + passed + " failed=" + failed);
             mc.stop();
         }

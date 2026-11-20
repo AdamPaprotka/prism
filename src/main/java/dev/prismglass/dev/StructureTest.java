@@ -53,6 +53,8 @@ public final class StructureTest {
             evaluate(server, Level.OVERWORLD, 0, 0, 48);
             evaluate(server, Level.NETHER, 0, 0, 40);
             evaluate(server, Level.END, 90, 90, 40); // outer islands, where end cities are
+            // villages over a much bigger area: their start biome is checked at the town centre's exact middle
+            evaluate(server, Level.OVERWORLD, 0, 0, 128, c -> c.equals("village") || c.equals("outpost"));
             // module check: seed + both modes, look at the nearest predicted village
             Prism.modules().get(dev.prismglass.module.render.Xray.class).seed.set(String.valueOf(SEED));
             var sf = Prism.modules().get(dev.prismglass.module.world.StructureFinder.class);
@@ -87,10 +89,14 @@ public final class StructureTest {
     }
 
     private static void evaluate(MinecraftServer server, ResourceKey<Level> dim, int cx, int cz, int r) {
+        evaluate(server, dim, cx, cz, r, c -> true);
+    }
+
+    private static void evaluate(MinecraftServer server, ResourceKey<Level> dim, int cx, int cz, int r, java.util.function.Predicate<String> want) {
         long t0 = System.nanoTime();
         StructurePredictor predictor = StructurePredictor.create(dim, SEED);
         if (predictor == null) { log("FAIL: no predictor for " + dim.identifier()); return; }
-        List<StructurePredictor.Hit> hits = predictor.scan(cx, cz, r, c -> true);
+        List<StructurePredictor.Hit> hits = predictor.scan(cx, cz, r, want);
         double predictMs = (System.nanoTime() - t0) / 1e6;
 
         Set<String> predicted = new HashSet<>();
@@ -105,7 +111,8 @@ public final class StructureTest {
                 for (var e : chunk.getAllStarts().entrySet()) {
                     if (!e.getValue().isValid()) continue;
                     var key = structures.getKey(e.getKey());
-                    out.add((key == null ? "unknown" : key.getPath()) + "@" + x + "," + z);
+                    String sid = key == null ? "unknown" : key.getPath();
+                    if (want.test(StructurePredictor.category(sid))) out.add(sid + "@" + x + "," + z);
                 }
             }
             return out;

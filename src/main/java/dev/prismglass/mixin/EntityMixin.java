@@ -11,13 +11,26 @@ import dev.prismglass.module.render.ESP;
 import dev.prismglass.module.render.Freecam;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Entity.class)
 public abstract class EntityMixin {
+    @Shadow public boolean noPhysics;
+
+    /** Phase: force collision off for the local player right before it moves (Player.tick resets it every tick). */
+    @Inject(method = "move", at = @At("HEAD"))
+    private void prism$phase(MoverType moverType, Vec3 delta, CallbackInfo ci) {
+        if (!prism$isSelf()) return;
+        dev.prismglass.module.movement.Phase phase = Prism.modules().get(dev.prismglass.module.movement.Phase.class);
+        if (phase != null && phase.isEnabled()) this.noPhysics = true;
+    }
+
     private boolean prism$isSelf() {
         return (Object) this == Minecraft.getInstance().player;
     }
@@ -47,6 +60,12 @@ public abstract class EntityMixin {
         Freecam fc = Prism.modules().get(Freecam.class);
         if (fc != null && fc.isEnabled()) {
             fc.rotate(dx, dy);
+            ci.cancel();
+            return;
+        }
+        var ct = Prism.modules().get(dev.prismglass.module.render.CameraTweaks.class);
+        if (ct != null && ct.freelooking()) {
+            ct.freelookTurn(dx, dy);
             ci.cancel();
         }
     }

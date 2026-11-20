@@ -35,6 +35,8 @@ public final class RotationManager {
     private int priority = Integer.MIN_VALUE;
     private int holdTicks;
     private boolean active, returning;
+    /** The current request skips the humanized ease-out (still capped by RotateSpeed). */
+    private boolean fast;
 
     private float realYaw, realPitch;
     private boolean swapped;
@@ -51,6 +53,18 @@ public final class RotationManager {
         this.holdTicks = 2;
         this.active = true;
         this.returning = false;
+        this.fast = false;
+    }
+
+    /**
+     * Like {@link #request(float, float, int)}, but turns straight there at RotateSpeed instead of easing in (which
+     * covers only half the way per tick): for one-tick windows like a falling mace smash, where an eased turn is
+     * still a few degrees short on the tick that counts.
+     */
+    public void requestFast(Vec3 point, int priority) {
+        float[] r = RotationUtil.toward(point);
+        request(r[0], r[1], priority);
+        if (this.priority == priority) fast = true;
     }
 
     public void request(Vec3 point, int priority) {
@@ -83,7 +97,7 @@ public final class RotationManager {
 
         // Scale both axes together so the turn follows a straight line, like a hand would.
         float len = (float) Math.sqrt(dYaw * dYaw + dPitch * dPitch);
-        if (ac.humanize.get() && !returning) {
+        if (ac.humanize.get() && !returning && !fast) {
             // ease-out: cover a varying fraction of the remaining angle, capped by a varying max speed.
             // Real flicks decelerate into the target; a constant-speed sweep is a pattern.
             ThreadLocalRandom r = ThreadLocalRandom.current();

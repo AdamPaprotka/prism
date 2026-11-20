@@ -47,6 +47,7 @@ public final class StreamTest {
         t++;
         MinecraftServer server = mc.getSingleplayerServer();
         long main = mc.getWindow().handle();
+        if (HIDDEN) { hiddenTick(server); return; }
 
         if (t == 40) {
             run(server, "gamerule advance_time false");
@@ -113,6 +114,53 @@ public final class StreamTest {
         if (t == 1100) {
             log("back to windowed: fullscreen=" + fullscreen() + " decorated=" + decorated(main));
             SDLVideo.SDL_SetWindowAlwaysOnTop(main, false);
+            log("done");
+            Runtime.getRuntime().halt(0);
+        }
+    }
+
+    /**
+     * -Psphiddentest: no visible window and no screen captures. Runs the overlay's whole draw path (on Vulkan: its own
+     * swapchain, the composite, the present) with the window kept hidden, and saves the main target (must be vanilla)
+     * and the overlay's frame (must have the ESP box + HUD) to screenshots/.
+     */
+    private static final boolean HIDDEN = Boolean.getBoolean("prismglass.streamtest.hidden");
+    private static int presentsAt;
+
+    private static void hiddenTick(MinecraftServer server) {
+        if (t == 40) {
+            run(server, "gamerule advance_time false");
+            run(server, "time set day");
+            run(server, "kill @e[type=!player]");
+            run(server, "execute at @p run summon zombie ~6 ~ ~2 {NoAI:1b,PersistenceRequired:1b}");
+        }
+        if (t == 50) run(server, "execute as @p at @p run tp @p ~ ~ ~ facing entity @e[type=zombie,limit=1] eyes");
+        if (t == 60) {
+            ESP esp = Prism.modules().get(ESP.class);
+            esp.mode.parse("Both");
+            esp.setEnabled(true);
+            Overlay.debugBlitHidden = true;
+            Prism.modules().get(StreamProof.class).setEnabled(true);
+            log("backend=" + com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
+        }
+        if (t == 100) {
+            log("overlay active=" + Overlay.active() + " shown=" + Overlay.isShown() + " affinity=0x" + Integer.toHexString(Overlay.affinity()) + " (want true false 0x11)");
+            presentsAt = Overlay.debugVkPresents;
+            Overlay.debugReadbackFile = "streamproof-overlay.png";
+            net.minecraft.client.Screenshot.grab(mc.gameDirectory, "prism-stream-main.png", mc.gameRenderer.mainRenderTarget(), 1, msg -> log(msg.getString()));
+        }
+        if (t == 200) log("overlay presents in 5 s: " + (Overlay.debugVkPresents - presentsAt) + " fps=" + mc.getFps());
+        if (t == 210) mc.gui.setScreen(new dev.prismglass.gui.ClickGuiScreen());
+        if (t == 240) Overlay.debugReadbackFile = "streamproof-clickgui.png";
+        if (t == 260) mc.gui.setScreen(null);
+        if (t == 270) Prism.modules().get(StreamProof.class).setEnabled(false);
+        if (t == 280) log("off: active=" + Overlay.active() + " (want false)");
+        if (t == 290) Prism.modules().get(StreamProof.class).setEnabled(true);
+        if (t == 300) presentsAt = Overlay.debugVkPresents;
+        if (t == 340) {
+            int n = Overlay.debugVkPresents - presentsAt;
+            log("re-enabled: active=" + Overlay.active() + " presents in 2 s: " + n + " fps=" + mc.getFps());
+            log("RESULT " + (Overlay.active() && n > 0 ? "PASS" : "FAIL"));
             log("done");
             Runtime.getRuntime().halt(0);
         }

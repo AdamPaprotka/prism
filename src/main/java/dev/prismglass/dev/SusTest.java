@@ -117,6 +117,63 @@ public final class SusTest {
             check("palette: buds present = not flagged", fresh != null && !sus.flagged(fresh));
         }
         if (t == 170) {
+            // light: a fresh-looking geode (2 clusters, 6 large buds) in chunk (-3,-3)
+            String c = "amethyst_cluster", l = "large_amethyst_bud";
+            geode(s, -40, -55, -40, c, l, l, "air", l, "air");
+            geode(s, -44, -55, -40, c, l, l, "air", l, "air");
+            // kelp: 6 grown tops (age 25) in chunk (5,5), 6 fresh ones (age 21) in chunk (5,-6), all under water
+            run(s, "fill 80 -60 80 95 -52 95 water");
+            run(s, "fill 80 -60 -96 95 -52 -81 water");
+            for (int i = 0; i < 6; i++) {
+                int x = 81 + 2 * i;
+                for (int y = -60; y < -57; y++) {
+                    run(s, "setblock " + x + " " + y + " 88 kelp_plant");
+                    run(s, "setblock " + x + " " + y + " -88 kelp_plant");
+                }
+                run(s, "setblock " + x + " -57 88 kelp[age=25]");
+                run(s, "setblock " + x + " -57 -88 kelp[age=21]");
+            }
+            sus.method.parse("Light");
+            sus.minFaces.parse("6");
+        }
+        if (t == 200) { sus.setEnabled(false); sus.setEnabled(true); }
+        if (t == 260) {
+            var grown = sus.results().get(ChunkPos.pack(2, 2));
+            var fresh = sus.results().get(ChunkPos.pack(-3, -3));
+            log("light grown: " + grown);
+            log("light fresh: " + fresh);
+            check("light: grown chunk = 12 cluster light sources, flagged", grown != null && grown.light() && grown.clusters() == 12 && grown.open() == 12 && sus.flagged(grown));
+            check("light: 2 clusters + 6 large buds counted from light, not flagged", fresh != null && fresh.light() && fresh.clusters() == 2 && fresh.buds() == 6 && !sus.flagged(fresh));
+            var kg = sus.kelpResults().get(ChunkPos.pack(5, 5));
+            var kf = sus.kelpResults().get(ChunkPos.pack(5, -6));
+            log("kelp grown: " + kg + " fresh: " + kf);
+            check("kelp: 6 tops at age 25 = grown, flagged", kg != null && kg.grown() == 6 && kg.fresh() == 0 && sus.flagged(kg));
+            check("kelp: 6 tops at age 21 = fresh, not flagged", kf != null && kf.grown() == 0 && kf.fresh() == 6 && !sus.flagged(kf));
+            // anti-xray view: every amethyst block in the client's copy turned to stone, light left as the server sent it
+            for (int[] cxz : new int[][]{{2, 2}, {-3, -3}}) {
+                var chunk = mc.level.getChunk(cxz[0], cxz[1]);
+                for (var section : chunk.getSections()) {
+                    if (section == null || section.hasOnlyAir()) continue;
+                    for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
+                        var st = section.getBlockState(x, y, z);
+                        if (st.is(net.minecraft.world.level.block.Blocks.AMETHYST_CLUSTER) || st.is(net.minecraft.world.level.block.Blocks.BUDDING_AMETHYST)
+                            || st.is(net.minecraft.world.level.block.Blocks.LARGE_AMETHYST_BUD))
+                            section.setBlockState(x, y, z, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), false);
+                    }
+                }
+            }
+            sus.method.parse("Auto");
+            sus.setEnabled(false);
+            sus.setEnabled(true);
+        }
+        if (t == 320) {
+            var grown = sus.results().get(ChunkPos.pack(2, 2));
+            var fresh = sus.results().get(ChunkPos.pack(-3, -3));
+            log("hidden grown: " + grown + " fresh: " + fresh);
+            check("anti-xray: blocks hidden, Auto falls back to light and still flags the grown chunk", grown != null && grown.light() && sus.flagged(grown));
+            check("anti-xray: the fresh one stays unflagged", fresh == null || !sus.flagged(fresh));
+        }
+        if (t == 330) {
             log("RESULT passed=" + passed + " failed=" + failed);
             mc.stop();
         }

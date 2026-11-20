@@ -12,8 +12,8 @@ import net.minecraft.world.item.Items;
  * opens a list editor for it with icons, add-with-autocomplete, remove and, for ordered lists, reordering.
  */
 public class ListSetting extends TextSetting {
-    /** TEXT: any word (e.g. a namespace); the choices are only suggestions. */
-    public enum Kind { BLOCK, ITEM, CHOICE, TEXT }
+    /** TEXT: any word (e.g. a namespace); the choices are only suggestions. ENTITY: entity types (zombie, creeper...). */
+    public enum Kind { BLOCK, ITEM, CHOICE, TEXT, ENTITY }
 
     private final Kind kind;
     private final boolean ordered;
@@ -57,14 +57,40 @@ public class ListSetting extends TextSetting {
 
     public void setItems(List<String> list) { set(String.join(",", list)); }
 
+    private String cachedRaw;
+    private Set<String> cachedSet = Set.of();
+
+    /** ENTITY lists: is this entity's type on the list? (cached per list text: ESP asks for every entity, every frame) */
+    public boolean has(net.minecraft.world.entity.Entity e) {
+        String raw = get();
+        if (!raw.equals(cachedRaw)) {
+            Set<String> set = new HashSet<>();
+            for (String i : items()) set.add(normalize(i));
+            cachedSet = set;
+            cachedRaw = raw;
+        }
+        if (cachedSet.isEmpty()) return false;
+        return cachedSet.contains(shortId(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType())));
+    }
+
     public static String normalize(String id) {
         String s = id.trim().toLowerCase(Locale.ROOT);
         return s.startsWith("minecraft:") ? s.substring("minecraft:".length()) : s;
     }
 
+    /**
+     * The id as this list stores it. CHOICE entries keep their declared spelling ("InRange"): normalize() lowercases,
+     * so matching them against the choices has to ignore case.
+     */
+    private String canonical(String id) {
+        String n = normalize(id);
+        if (kind == Kind.CHOICE) for (String c : choices) if (normalize(c).equals(n)) return c;
+        return n;
+    }
+
     /** Adds a valid id; false if invalid, already present (unordered lists) or full. */
     public boolean add(String id) {
-        String n = normalize(id);
+        String n = canonical(id);
         if (n.isEmpty() || !valid(n)) return false;
         List<String> l = items();
         if (!ordered && l.contains(n)) return false;
@@ -91,6 +117,7 @@ public class ListSetting extends TextSetting {
 
     public boolean valid(String id) {
         if (kind == Kind.TEXT) return !normalize(id).isEmpty();
+        if (kind == Kind.CHOICE) return choices.contains(canonical(id));
         universe();
         return universeSet.contains(normalize(id));
     }
@@ -102,9 +129,10 @@ public class ListSetting extends TextSetting {
             switch (kind) {
                 case BLOCK -> { for (Identifier id : BuiltInRegistries.BLOCK.keySet()) u.add(shortId(id)); }
                 case ITEM -> { for (Identifier id : BuiltInRegistries.ITEM.keySet()) u.add(shortId(id)); }
+                case ENTITY -> { for (Identifier id : BuiltInRegistries.ENTITY_TYPE.keySet()) u.add(shortId(id)); }
                 case CHOICE, TEXT -> u.addAll(choices);
             }
-            if (kind == Kind.BLOCK || kind == Kind.ITEM) Collections.sort(u);
+            if (kind == Kind.BLOCK || kind == Kind.ITEM || kind == Kind.ENTITY) Collections.sort(u);
             universe = u;
             universeSet = new HashSet<>(u);
         }
@@ -135,6 +163,8 @@ public class ListSetting extends TextSetting {
             if (id == null) return ItemStack.EMPTY;
             Identifier key = Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);
             if (key == null) return ItemStack.EMPTY;
+            // entities show their spawn egg (none for e.g. players, arrows)
+            if (kind == Kind.ENTITY) key = Identifier.fromNamespaceAndPath(key.getNamespace(), key.getPath() + "_spawn_egg");
             Item item = kind == Kind.BLOCK ? BuiltInRegistries.BLOCK.getValue(key).asItem() : BuiltInRegistries.ITEM.getValue(key);
             return item == Items.AIR ? ItemStack.EMPTY : new ItemStack(item);
         }

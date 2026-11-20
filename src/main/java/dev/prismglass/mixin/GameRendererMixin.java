@@ -14,6 +14,7 @@ import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -24,6 +25,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
+    /** CameraTweaks stretch: your hand is drawn for the same narrower screen as the world. */
+    @ModifyArg(method = "render3dHud", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/Projection;setupPerspective(FFFFF)V"), index = 3)
+    private float prism$stretchHand(float width) {
+        var ct = Prism.modules().get(dev.prismglass.module.render.CameraTweaks.class);
+        return ct != null ? ct.projectionWidth(width, Minecraft.getInstance().getWindow().getHeight()) : width;
+    }
+
     /**
      * Topmost layer: after the screen, toasts and debug overlay have all been extracted. Gui builds its extractor
      * locally, so the HUD gets its own on the same render state (it only adds strata on top).

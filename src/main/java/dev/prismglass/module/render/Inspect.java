@@ -21,7 +21,11 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
- * CS:GO-style inspect of the item in your hand (key: ClickGUI → Keybinds → Inspect, default I).
+ * CS:GO-style inspect of the item in your hand (key: ClickGUI → Keybinds → Inspect, default I). Not a module you
+ * switch: it never shows in the panels and is always ready, only the key starts it.
+ *
+ * <p>Mining fatigue slows it down the way vanilla slows the swing (6 / (6 + 2 x levels)): the real effect and
+ * {@link FatigueAnim} both count. Playback runs on its own clock so the rate can change mid-clip without a jump.
  *
  * <p>Two layers, both offsets from the vanilla pose so every clip starts and ends exactly on it:
  * <ul>
@@ -60,7 +64,8 @@ public class Inspect extends Module {
 
     private Clip clip;
     private InteractionHand hand = InteractionHand.MAIN_HAND;
-    private long startNanos = -1, fadeNanos = -1;
+    private long startNanos = -1, fadeNanos = -1, clockNanos;
+    private double playSeconds; // clip time played so far, advanced at rate()
     private float[] from, fadeFrom;
     private ItemStack startStack = ItemStack.EMPTY;
     private int startSlot, lastSoundKey, swordVariant;
@@ -70,6 +75,15 @@ public class Inspect extends Module {
         drawn.set(false);
         setEnabledSilently(true);
     }
+
+    // keybind only: always on, not in the panels, can't be switched off (old profiles may have it saved off)
+    @Override public boolean internal() { return true; }
+    @Override public void toggle() {}
+    @Override public void setEnabled(boolean value) { super.setEnabled(true); }
+    @Override public void setEnabledSilently(boolean value) { super.setEnabledSilently(true); }
+
+    /** Playback rate right now: Speed, slowed by mining fatigue (the effect and FatigueAnim). */
+    public float rate() { return speed.getFloat() * FatigueAnim.animScale(true); }
 
     // ---- control ----------------------------------------------------------------------------------------
 
@@ -89,14 +103,15 @@ public class Inspect extends Module {
         clip = pick(stack);
         startStack = stack.copy();
         startSlot = p.getInventory().getSelectedSlot();
-        startNanos = System.nanoTime();
+        startNanos = clockNanos = System.nanoTime();
+        playSeconds = 0;
         lastSoundKey = 0;
     }
 
     public boolean inspecting() { return clip != null || fadeNanos >= 0; }
 
     /** Length of the clip playing now at the current speed, in seconds (0 when idle). */
-    public float clipSeconds() { return clip == null ? 0 : clip.seconds / speed.getFloat(); }
+    public float clipSeconds() { return clip == null ? 0 : clip.seconds / rate(); }
 
     /** Name of the clip playing now, for logs. */
     public String clipName() {
@@ -148,7 +163,10 @@ public class Inspect extends Module {
         }
     }
 
-    private float progress(long now) { return (now - startNanos) / 1e9f * speed.getFloat() / clip.seconds; }
+    private float progress(long now) {
+        if (now > clockNanos) { playSeconds += (now - clockNanos) / 1e9 * rate(); clockNanos = now; }
+        return (float) (playSeconds / clip.seconds);
+    }
 
     /** This frame's pose, or null at rest. */
     private float[] currentPose() {
@@ -163,7 +181,7 @@ public class Inspect extends Module {
                 else from = null;
             }
             if (sway.get()) {
-                float s = (now - startNanos) / 1e9f, env = Mth.sin(Mth.PI * Math.min(u, 1));
+                float s = (float) playSeconds, env = Mth.sin(Mth.PI * Math.min(u, 1));
                 p[TY] += env * 0.006f * Mth.sin(s * 5.0f);
                 p[RX] += env * 0.8f * Mth.sin(s * 3.4f + 0.7f);
                 p[RZ] += env * 0.6f * Mth.sin(s * 2.8f + 1.9f);

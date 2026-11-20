@@ -25,6 +25,18 @@ public abstract class MinecraftClientMixin {
         if (timer == null || timer.beforeTick()) original.call(self);
     }
 
+    /** StreamProof on Vulkan: the overlay's blit goes into the same submit as the game's (GL does it in GlDeviceMixin). */
+    @Inject(method = "renderFrame", at = @At(value = "INVOKE", shift = At.Shift.AFTER,
+        target = "Lcom/mojang/renderpearl/api/device/GpuSurface;blitFromTexture(Lcom/mojang/renderpearl/api/commands/CommandEncoder;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V"))
+    private void prism$overlayBlit(boolean advanceGameTime, CallbackInfo ci) {
+        dev.prismglass.streamproof.Overlay.vkAfterGameBlit();
+    }
+
+    @Inject(method = "renderFrame", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/device/GpuSurface;present()V"))
+    private void prism$overlayPresent(boolean advanceGameTime, CallbackInfo ci) {
+        dev.prismglass.streamproof.Overlay.vkBeforeGamePresent();
+    }
+
     @Inject(method = "shouldEntityAppearGlowing", at = @At("HEAD"), cancellable = true)
     private void prism$outline(Entity entity, CallbackInfoReturnable<Boolean> cir) {
         ESP esp = Prism.modules().get(ESP.class);

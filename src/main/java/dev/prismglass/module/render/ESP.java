@@ -21,12 +21,15 @@ public class ESP extends Module {
     public final BoolSetting passives = bool("Passives", false, "Animals.");
     public final BoolSetting items = bool("Items", false, "Dropped items.");
     public final BoolSetting crystals = bool("Crystals", true, "End crystals.");
+    public final ListSetting entities = list("Entities", "", "Mobs to show one by one (zombie, creeper, villager...): always shown, whatever Hostiles / Passives say.", ListSetting.Kind.ENTITY);
+    public final BoolSetting listOnly = bool("ListOnly", false, "Show only mobs from the Entities list (Players, Items and Crystals still follow their toggles).");
     public final ColorSetting playerColor = color("PlayerColor", 0xFFFF5C7A, "Enemy players.");
     public final ColorSetting friendColor = color("FriendColor", 0xFF5CFFB0, "Friends.");
     public final ColorSetting hostileColor = color("HostileColor", 0xFFFFA94D, "Monsters.");
     public final ColorSetting passiveColor = color("PassiveColor", 0xFF8CE99A, "Animals.");
     public final ColorSetting itemColor = color("ItemColor", 0xFFE9ECEF, "Items.");
     public final ColorSetting crystalColor = color("CrystalColor", 0xFFB197FC, "Crystals.");
+    public final ColorSetting listColor = color("ListColor", 0xFF74C0FC, "Mobs from the Entities list.");
     public final NumberSetting fillAlpha = num("FillAlpha", 40, 0, 255, 1, "Box fill opacity.");
 
     public ESP() { super("ESP", "See entities through walls.", Category.RENDER); }
@@ -35,15 +38,18 @@ public class ESP extends Module {
         if (e == mc.player && !mc.options.getCameraType().isFirstPerson()) return false;
         if (e == mc.player) return false;
         if (e instanceof Player) return players.get();
-        if (e instanceof Enemy) return hostiles.get();
+        if (entities.has(e)) return true;
         if (e instanceof ItemEntity) return items.get();
         if (e instanceof EndCrystal) return crystals.get();
+        if (listOnly.get()) return false;
+        if (e instanceof Enemy) return hostiles.get();
         if (e instanceof LivingEntity) return passives.get();
         return false;
     }
 
     private int colorOf(Entity e) {
         if (e instanceof Player p) return Prism.friends().isFriend(p) ? friendColor.color() : playerColor.color();
+        if (entities.has(e)) return listColor.color();
         if (e instanceof Enemy) return hostileColor.color();
         if (e instanceof ItemEntity) return itemColor.color();
         if (e instanceof EndCrystal) return crystalColor.color();

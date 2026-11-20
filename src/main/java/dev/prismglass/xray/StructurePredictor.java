@@ -49,7 +49,14 @@ import net.minecraft.world.level.levelgen.structure.structures.RuinedPortalStruc
  * reproduced at the chunk centre instead, which can differ right at biome borders.
  */
 public final class StructurePredictor {
-    public record Hit(String category, String id, ChunkPos chunk, BlockPos pos) {}
+    /**
+     * A predicted start. {@code startTemplate}: for jigsaw structures, the template of the start piece vanilla picks
+     * (village/plains/zombie/town_centers/... for an abandoned village), else null.
+     */
+    public record Hit(String category, String id, ChunkPos chunk, BlockPos pos, String startTemplate) {
+        /** An abandoned (zombie) village: its town centre, and so every piece, comes from the zombie pools. */
+        public boolean zombieVillage() { return startTemplate != null && category.equals("village") && startTemplate.contains("/zombie/"); }
+    }
 
     /** An end city's ship: where the city starts, the ship's centre, and the Elytra item frame (null if no marker). */
     public record Ship(BlockPos city, BlockPos ship, BlockPos elytra) {}
@@ -66,13 +73,20 @@ public final class StructurePredictor {
     private final ChunkGeneratorStructureState state;
     private final LevelHeightAccessor height;
 
+    /** Vanilla's built-in worldgen registries with the biome tags bound (built once, shared by everything here). */
+    public static synchronized HolderLookup.Provider lookup() {
+        if (lookup == null) {
+            HolderLookup.Provider l = VanillaRegistries.createWorldLookup();
+            bindBiomeTags(l);
+            lookup = l;
+        }
+        return lookup;
+    }
+
     private StructurePredictor(ResourceKey<Level> dim, long seed) {
         this.seed = seed;
         this.dim = dim;
-        if (lookup == null) {
-            lookup = VanillaRegistries.createWorldLookup();
-            bindBiomeTags(lookup);
-        }
+        lookup();
         ResourceKey<NoiseGeneratorSettings> settingsKey;
         if (dim == Level.NETHER) {
             source = MultiNoiseBiomeSource.createFromPreset(lookup.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
@@ -187,13 +201,36 @@ public final class StructurePredictor {
         try {
             Structure.GenerationContext ctx = new Structure.GenerationContext(
                 null, generator, source, climate, randomState, null, seed, chunk, height, biomeOk);
-            BlockPos pos;
+            BlockPos pos = null;
+            String template = null;
             if (structure instanceof JigsawStructure jigsaw) {
                 int startY = jigsaw.startHeight.sample(ctx.random(), new WorldGenerationContext(generator, height));
-                int x = chunk.getMinBlockX() + 8, z = chunk.getMinBlockZ() + 8;
                 Optional<Heightmap.Types> project = jigsaw.projectStartToHeightmap;
-                int y = project.isEmpty() ? startY : startY + generator.getFirstFreeHeight(x, z, project.get(), height, randomState);
-                pos = new BlockPos(x, y, z);
+                // vanilla's next draws on the same random (JigsawPlacement.addPieces): the rotation, then the start piece
+                if (jigsaw.getPoolAliases().isEmpty()) {
+                    var rotation = net.minecraft.world.level.block.Rotation.getRandom(ctx.random());
+                    var element = jigsaw.getStartPool().value().getRandomTemplate(ctx.random());
+                    if (element == net.minecraft.world.level.levelgen.structure.pools.EmptyPoolElement.INSTANCE) return null;
+                    if (element instanceof net.minecraft.world.level.levelgen.structure.pools.SinglePoolElement single) {
+                        template = single.getTemplateLocation().getPath();
+                        // the start piece's own box gives vanilla's exact start (its centre, on the ground there), which
+                        // is where the biome is checked; only for starts placed by their corner (no start jigsaw)
+                        var t = jigsaw.startJigsawName.isEmpty() ? template(template) : null;
+                        if (t != null) {
+                            BlockPos origin = new BlockPos(chunk.getMinBlockX(), startY, chunk.getMinBlockZ());
+                            var box = t.getBoundingBox(new net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings().setRotation(rotation), origin);
+                            int cx = (box.maxX() + box.minX()) / 2, cz = (box.maxZ() + box.minZ()) / 2;
+                            int y = project.isEmpty() ? startY : startY + generator.getFirstFreeHeight(cx, cz, project.get(), height, randomState);
+                            pos = new BlockPos(cx, y, cz);
+                        }
+                    }
+                }
+                if (pos == null) {
+                    // other jigsaw starts: the chunk centre (can be off right at biome borders)
+                    int x = chunk.getMinBlockX() + 8, z = chunk.getMinBlockZ() + 8;
+                    int y = project.isEmpty() ? startY : startY + generator.getFirstFreeHeight(x, z, project.get(), height, randomState);
+                    pos = new BlockPos(x, y, z);
+                }
                 if (!biomeOk.test(biomeAt(pos, climate))) return null;
             } else if (structure instanceof RuinedPortalStructure) {
                 int x = chunk.getMinBlockX() + 8, z = chunk.getMinBlockZ() + 8;
@@ -204,7 +241,7 @@ public final class StructurePredictor {
                 if (stub.isEmpty()) return null;
                 pos = stub.get().position();
             }
-            return new Hit(category(id), id, chunk, pos);
+            return new Hit(category(id), id, chunk, pos, template);
         } catch (Throwable t) {
             Prism.LOG.debug("[structures] {} at {} failed", id, chunk, t);
             return null;
@@ -342,6 +379,46 @@ public final class StructurePredictor {
         return null;
     }
 
+    private static final Map<String, Optional<net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate>> TEMPLATES =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** One vanilla template by path (village/plains/town_centers/plains_fountain_01), loaded once; null if missing. */
+    static net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template(String path) {
+        return TEMPLATES.computeIfAbsent(path, p -> {
+            String folder = p.contains("/") ? p.substring(0, p.lastIndexOf('/')) : p;
+            String file = "structure/" + p + ".nbt";
+            return loadTemplates(folder, file::equals).values().stream().findFirst();
+        }).orElse(null);
+    }
+
+    /**
+     * Vanilla structure templates from the game jar under {@code structure/<folder>}, by template id
+     * (end_city/ship...), for paths the filter accepts.
+     */
+    public static Map<net.minecraft.resources.Identifier, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate> loadTemplates(
+            String folder, Predicate<String> pathFilter) {
+        Map<net.minecraft.resources.Identifier, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate> out = new TreeMap<>();
+        var fixer = net.minecraft.util.datafix.DataFixers.getDataFixer();
+        try (var pack = net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource().fullResources()) {
+            pack.listResources(net.minecraft.server.packs.PackType.SERVER_DATA, "minecraft", "structure/" + folder, (id, supplier) -> {
+                String path = id.getPath(); // structure/end_city/ship.nbt
+                if (!path.endsWith(".nbt") || !pathFilter.test(path)) return;
+                var templateId = net.minecraft.resources.Identifier.withDefaultNamespace(path.substring("structure/".length(), path.length() - 4));
+                try (var in = supplier.get()) {
+                    var tag = net.minecraft.nbt.NbtIo.readCompressed(in, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
+                    int version = net.minecraft.nbt.NbtUtils.getDataVersion(tag, 500);
+                    var template = new net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate();
+                    template.load(net.minecraft.core.registries.BuiltInRegistries.BLOCK,
+                        net.minecraft.util.datafix.DataFixTypes.STRUCTURE.updateToCurrentVersion(fixer, tag, version));
+                    synchronized (out) { out.put(templateId, template); }
+                } catch (Exception e) {
+                    Prism.LOG.warn("[structures] bad template {}", id, e);
+                }
+            });
+        }
+        return out;
+    }
+
     /**
      * A template manager holding only vanilla's end_city templates from the game jar. Its constructor needs a world
      * save, so it's allocated bare and its repository pre-filled; vanilla's getOrCreate then finds everything there.
@@ -356,24 +433,7 @@ public final class StructurePredictor {
                 unsafe.allocateInstance(net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager.class);
             Map<net.minecraft.resources.Identifier, Optional<net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate>> repo =
                 new java.util.concurrent.ConcurrentHashMap<>();
-            var fixer = net.minecraft.util.datafix.DataFixers.getDataFixer();
-            try (var pack = net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource().fullResources()) {
-                pack.listResources(net.minecraft.server.packs.PackType.SERVER_DATA, "minecraft", "structure/end_city", (id, supplier) -> {
-                    String path = id.getPath(); // structure/end_city/ship.nbt
-                    if (!path.endsWith(".nbt")) return;
-                    var templateId = net.minecraft.resources.Identifier.withDefaultNamespace(path.substring("structure/".length(), path.length() - 4));
-                    try (var in = supplier.get()) {
-                        var tag = net.minecraft.nbt.NbtIo.readCompressed(in, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
-                        int version = net.minecraft.nbt.NbtUtils.getDataVersion(tag, 500);
-                        var template = new net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate();
-                        template.load(net.minecraft.core.registries.BuiltInRegistries.BLOCK,
-                            net.minecraft.util.datafix.DataFixTypes.STRUCTURE.updateToCurrentVersion(fixer, tag, version));
-                        repo.put(templateId, Optional.of(template));
-                    } catch (Exception e) {
-                        Prism.LOG.warn("[structures] bad template {}", id, e);
-                    }
-                });
-            }
+            loadTemplates("end_city", p -> true).forEach((id, t) -> repo.put(id, Optional.of(t)));
             manager.structureRepository = repo;
             manager.sources = List.of();
             Prism.LOG.info("[structures] loaded {} end city templates", repo.size());
@@ -394,6 +454,125 @@ public final class StructurePredictor {
 
     private Holder<Biome> biomeAt(BlockPos p, Climate.Sampler climate) {
         return source.createResolver(climate).getNoiseBiome(QuartPos.fromBlock(p.getX()), QuartPos.fromBlock(p.getY()), QuartPos.fromBlock(p.getZ()));
+    }
+
+    /**
+     * The seedcracker's view of a structure start: its set's random-spread placement (village_plains -> villages)
+     * plus the start chunk. Null for structures without one (strongholds...). Frequency and exclusion zones only ever
+     * remove starts, so a real start always sits on its region's potential chunk.
+     */
+    public static SeedMath.Obs observation(String structureId, ChunkPos start) {
+        for (Holder<StructureSet> set : lookup().lookupOrThrow(Registries.STRUCTURE_SET).listElements().toList()) {
+            for (var e : set.value().structures()) {
+                if (!id(e.structure()).equals(structureId)) continue;
+                if (!(set.value().placement() instanceof RandomSpreadStructurePlacement p)) return null;
+                return new SeedMath.Obs(structureId, p.spacing(), p.separation(), p.salt(),
+                    p.spreadType() == net.minecraft.world.level.levelgen.structure.placement.RandomSpreadType.TRIANGULAR, start.x(), start.z());
+            }
+        }
+        return null;
+    }
+
+    /** Vanilla's own answer for an observation (the cracker's final check, independent of SeedMath's copy). */
+    public static boolean vanillaFits(long seed, String structureId, ChunkPos start) {
+        for (Holder<StructureSet> set : lookup().lookupOrThrow(Registries.STRUCTURE_SET).listElements().toList()) {
+            for (var e : set.value().structures()) {
+                if (!id(e.structure()).equals(structureId)) continue;
+                return set.value().placement() instanceof RandomSpreadStructurePlacement p
+                    && p.getPotentialStructureChunk(seed, start.x(), start.z()).equals(start);
+            }
+        }
+        return false;
+    }
+
+    private static volatile List<String> structureIds, biomeIds;
+
+    /** Every vanilla biome id (plains, sulfur_caves...); empty until the registries are built (async). */
+    public static List<String> biomeIds() {
+        if (biomeIds != null) return biomeIds;
+        if (lookup == null) { structureIds(); return List.of(); }
+        List<String> ids = new ArrayList<>();
+        lookup.lookupOrThrow(Registries.BIOME).listElements().forEach(h -> ids.add(h.key().identifier().getPath()));
+        Collections.sort(ids);
+        return biomeIds = ids;
+    }
+
+    /** Whether this dimension's generation can make that biome at all. */
+    public boolean hasBiome(String biomeId) {
+        return lookup.lookupOrThrow(Registries.BIOME).get(ResourceKey.create(Registries.BIOME, net.minecraft.resources.Identifier.withDefaultNamespace(biomeId)))
+            .map(source.possibleBiomes()::contains).orElse(false);
+    }
+
+    /**
+     * The nearest spot of a biome, the way /locate biome looks (a square spiral of columns {@code stepH} apart, each
+     * sampled every {@code stepV} blocks up and down from {@code origin}'s height), client-side from the seed. Null when
+     * there's none within {@code radius} blocks.
+     */
+    public BlockPos findBiome(String biomeId, BlockPos origin, int radius, int stepH, int stepV) {
+        var holder = lookup.lookupOrThrow(Registries.BIOME).get(ResourceKey.create(Registries.BIOME, net.minecraft.resources.Identifier.withDefaultNamespace(biomeId)));
+        if (holder.isEmpty() || !source.possibleBiomes().contains(holder.get())) return null;
+        Holder<Biome> target = holder.get();
+        var resolver = source.createCachingResolver(randomState);
+        int[] ys = net.minecraft.util.Mth.outFromOrigin(origin.getY(), height.getMinY() + 1, height.getMaxY() + 1, stepV).toArray();
+        for (BlockPos.MutableBlockPos col : BlockPos.spiralAround(BlockPos.ZERO, Math.floorDiv(radius, stepH), net.minecraft.core.Direction.EAST, net.minecraft.core.Direction.SOUTH)) {
+            int x = origin.getX() + col.getX() * stepH, z = origin.getZ() + col.getZ() * stepH;
+            for (int y : ys) {
+                if (resolver.getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z)).equals(target)) return new BlockPos(x, y, z);
+            }
+        }
+        return null;
+    }
+
+    /** Every vanilla structure id (village_plains, jungle_pyramid...); empty until the registries are built (async). */
+    public static List<String> structureIds() {
+        if (structureIds != null) return structureIds;
+        if (lookup == null) {
+            Thread t = new Thread(StructurePredictor::lookup, "Prism structures lookup");
+            t.setDaemon(true);
+            t.start();
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>();
+        lookup.lookupOrThrow(Registries.STRUCTURE).listElements().forEach(h -> ids.add(h.key().identifier().getPath()));
+        Collections.sort(ids);
+        return structureIds = ids;
+    }
+
+    /** A biome the client saw (quart coordinates, as chunk packets carry them). */
+    public record BiomeSample(int qx, int qy, int qz, String biome) {}
+
+    /**
+     * Checks a full seed against biomes the client saw. Biomes since 1.18 depend on all 64 bits, so this is what tells
+     * the 65536 seeds that share a structure seed apart when the server hides its hashed seed.
+     */
+    public static final class BiomeCheck {
+        private final BiomeSource source;
+        private final NoiseGeneratorSettings settings;
+
+        /** Null for dimensions whose biomes don't depend on the full seed (the End). */
+        public static BiomeCheck of(ResourceKey<Level> dim) {
+            if (dim != Level.OVERWORLD && dim != Level.NETHER) return null;
+            return new BiomeCheck(dim);
+        }
+
+        private BiomeCheck(ResourceKey<Level> dim) {
+            var l = lookup();
+            var preset = dim == Level.NETHER ? MultiNoiseBiomeSourceParameterLists.NETHER : MultiNoiseBiomeSourceParameterLists.OVERWORLD;
+            source = MultiNoiseBiomeSource.createFromPreset(l.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST).getOrThrow(preset));
+            settings = l.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(dim == Level.NETHER ? NoiseGeneratorSettings.NETHER : NoiseGeneratorSettings.OVERWORLD).value();
+        }
+
+        /** How many samples this seed gets wrong, counting only up to {@code max + 1} (stops early). */
+        public int mismatches(long seed, List<BiomeSample> samples, int max) {
+            RandomState rs = RandomState.create(lookup().lookupOrThrow(Registries.NOISE), seed, settings);
+            var resolver = source.createResolver(rs.createClimateSampler(SamplerContext.builder().build()));
+            int bad = 0;
+            for (BiomeSample s : samples) {
+                String got = resolver.getNoiseBiome(s.qx(), s.qy(), s.qz()).unwrapKey().map(k -> k.identifier().toString()).orElse("?");
+                if (!got.equals(s.biome()) && ++bad > max) return bad;
+            }
+            return bad;
+        }
     }
 
     private static String id(Holder<Structure> structure) {

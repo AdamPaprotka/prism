@@ -79,7 +79,7 @@ public class ClickGuiScreen extends Screen {
         int longest = 0;
         int count = 0;
         for (Module m : Prism.modules().byCategory(cat)) {
-            if (m instanceof Service) continue; // not in the panel
+            if (m instanceof Service || m.internal()) continue; // not in the panel
             longest = Math.max(longest, f.width(m.getName()) + 1); // +1: enabled names have a shadow
             count++;
         }
@@ -188,6 +188,7 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+        dev.prismglass.util.TextInput.sync(this, capturesKeys() && listening == null); // SDL3: chars only arrive while on
         Glass.pixel = theme.blocky.get() ? theme.blockSize.getFloat() : 0;
         Glass.flat = dev.prismglass.gui.render.Holo.capturing(); // PopOut: no screenshot refraction on the tilted panel
         try {
@@ -366,6 +367,7 @@ public class ClickGuiScreen extends Screen {
         String placeholder = switch (l.kind()) {
             case BLOCK -> "Type a block, Enter to add";
             case ITEM -> "Type an item, Enter to add";
+            case ENTITY -> "Type a mob, Enter to add";
             default -> "Type to filter, Enter to add";
         };
         if (l.maxSize() > 0 && items.size() >= l.maxSize()) placeholder = "Full - remove one to add";
@@ -980,7 +982,7 @@ public class ClickGuiScreen extends Screen {
 
     private List<Module> filtered(Category cat) {
         List<Module> all = new java.util.ArrayList<>(Prism.modules().byCategory(cat));
-        all.removeIf(m -> m instanceof dev.prismglass.module.client.KeyActions || m instanceof Service); // Keybinds / Config tabs instead
+        all.removeIf(m -> m.internal() || m instanceof Service); // Keybinds / Config tabs instead
         if (search.isEmpty()) return all;
         String q = search.toLowerCase(Locale.ROOT);
         List<Module> out = new ArrayList<>();
@@ -1044,6 +1046,8 @@ public class ClickGuiScreen extends Screen {
     /** Dev GUI test hooks: start typing into a slider, and the text typed so far. */
     public void debugTypeNumber(NumberSetting n) { numEditing = n; numInput = n.display(); numFresh = true; }
     public String debugNumInput() { return numEditing == null ? null : numInput; }
+    /** Dev test hook: focus / unfocus the search field as a click / Escape would. */
+    public void debugFocusSearch(boolean on) { searchFocused = on; lastSearchInput = System.currentTimeMillis(); }
 
     // ---- input -----------------------------------------------------------------------------------
 

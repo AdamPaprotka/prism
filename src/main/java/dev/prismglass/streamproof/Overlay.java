@@ -4,7 +4,14 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.device.GpuSurface;
+import com.mojang.renderpearl.api.device.SurfaceException;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.backend.opengl.GlBackend;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
@@ -13,8 +20,11 @@ import com.sun.jna.ptr.IntByReference;
 import dev.prismglass.Prism;
 import dev.prismglass.module.client.StreamProof;
 import java.nio.IntBuffer;
+import java.util.Optional;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.PreferredGraphicsApi;
+import net.minecraft.client.renderer.BindGroupLayouts;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11C;
@@ -23,6 +33,7 @@ import org.lwjgl.opengl.GL21C;
 import org.lwjgl.opengl.GL30C;
 import org.lwjgl.sdl.SDLError;
 import org.lwjgl.sdl.SDLEvents;
+import org.lwjgl.sdl.SDLKeyboard;
 import org.lwjgl.sdl.SDLProperties;
 import org.lwjgl.sdl.SDL_Event;
 import org.lwjgl.sdl.SDL_EventFilter;
@@ -43,10 +54,12 @@ import static org.lwjgl.sdl.SDLVideo.*;
  *
  * <p>26.3 (SDL3 + renderpearl): the OpenGL backend renders everything with one context that it makes current on
  * whichever window it presents to, so the overlay is just another GpuSurface of the game's device: present = blit the
- * overlay target to its surface and swap, then hand the context back to the game's window. The Vulkan backend can't do
- * this (its swapchains are always opaque, VK_COMPOSITE_ALPHA_OPAQUE), so StreamProof needs the OpenGL renderer and
- * switches the Graphics API option to it when it's turned on under Vulkan. Exclusive fullscreen would cover the
- * overlay, so fullscreen is borderless fullscreen while this is on (see WindowMixin).
+ * overlay target to its surface and swap, then hand the context back to the game's window. Vulkan swapchains are
+ * always opaque (VK_COMPOSITE_ALPHA_OPAQUE), so on the Vulkan backend the overlay is an opaque window instead: it shows
+ * the whole frame (vanilla + Prism's layer blended over it, see {@link #composite()}) on its own swapchain of the same
+ * device, while the game window under it still gets the vanilla frame. Capture skips the overlay and sees the game
+ * window; you see the overlay. Exclusive fullscreen would cover the overlay, so fullscreen is borderless fullscreen
+ * while this is on (see WindowMixin).
  */
 public final class Overlay {
     private static final Minecraft mc = Minecraft.getInstance();
@@ -54,13 +67,25 @@ public final class Overlay {
     /** Render3D's output: the overlay target while StreamProof runs, otherwise the main target. */
     public static final LayerTarget OUTPUT = new LayerTarget("prism_streamproof", () -> active() ? Overlay.target : null);
 
+    /** Vulkan: the game's frame with Prism's layer (premultiplied alpha, it's drawn into a cleared target) on top. */
+    private static final RenderPipeline COMPOSITE = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+        .withLocation(Identifier.fromNamespaceAndPath("prismglass", "pipeline/streamproof_composite"))
+        .withVertexShader("core/screenquad")
+        .withFragmentShader("core/blit_screen")
+        .withBindGroupLayout(BindGroupLayouts.IN_SAMPLER)
+        .withColorTargetState(new ColorTargetState(Optional.of(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_COLOR))
+        .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
+        .build();
+
     private static TextureTarget target;
+    /** Vulkan only: what the opaque overlay window shows. */
+    private static TextureTarget composed;
     private static long window;
     private static int windowId, mainId;
     private static GpuSurface surface;
     private static SDL_EventFilter moveWatch;
     private static Boolean openGl;
-    private static boolean failed, shown, lastWantBorderless, presenting;
+    private static boolean failed, shown, lastWantBorderless, presenting, surfaceStale;
     private static int lastX = Integer.MIN_VALUE, lastY, lastW, lastH;
 
     /** Set while fullscreen is really a borderless window (WindowMixin). */
@@ -73,6 +98,9 @@ public final class Overlay {
 
     // dev test switches
     public static boolean debugForceVisible, debugIncludeInCapture;
+    /** Dev: Vulkan blits and presents to the overlay even while it's hidden (the hidden test never shows it). */
+    public static boolean debugBlitHidden;
+    public static int debugVkPresents;
     public static volatile String debugReadbackFile;
     /** Dev: screenshot name for the overlay target, grabbed at present before it's cleared (no window needed). */
     public static volatile String debugGrabName;
@@ -118,9 +146,10 @@ public final class Overlay {
 
     /** Start of Prism's GUI content (HUD, ClickGUI): everything from here on goes to the hidden layer. */
     public static void markGui() {
-        // present() only runs on the OpenGL backend; this runs every frame on both, so Vulkan is caught here
-        if (window == 0 && wanted() && !openGl()) requireOpenGl();
-        if (active()) ((PrismGuiState) mc.gameRenderer.gameRenderState().guiRenderState).prism$markOverlay();
+        if (active()) {
+            ((PrismGuiState) mc.gameRenderer.gameRenderState().guiRenderState).prism$markOverlay();
+            diagMarked = true;
+        }
     }
 
     /** Render3D.begin: give the overlay the world's depth so non-xray boxes are still hidden behind walls. */
@@ -135,6 +164,53 @@ public final class Overlay {
     public static void present() {
         if (presenting) return; // the overlay's own surface presents through the same hook
         RenderSystem.assertOnRenderThread();
+        if (!beginFrame()) return;
+        presenting = true;
+        try {
+            syncWindow();
+            diagFrame();
+            if (shown) blit();
+            grab();
+            clearForNextFrame();
+        } catch (Throwable t) {
+            fail("overlay error", t);
+        } finally {
+            presenting = false;
+        }
+    }
+
+    /**
+     * Vulkan, right after Minecraft.renderFrame recorded the game's blit to its window: record the overlay's (the
+     * frame's submit sends both). GL does all of it in {@link #present()}.
+     */
+    public static void vkAfterGameBlit() {
+        if (openGl()) return;
+        RenderSystem.assertOnRenderThread();
+        if (!beginFrame()) return;
+        try {
+            syncWindow();
+            diagFrame();
+            if (shown || debugBlitHidden) vkBlit();
+            grab();
+            clearForNextFrame();
+        } catch (Throwable t) {
+            fail("overlay error", t);
+        }
+    }
+
+    /** Vulkan, right before the game's present: the overlay goes out first, it's the one you look at. */
+    public static void vkBeforeGamePresent() {
+        if (surface == null || openGl() || !surface.isAcquired()) return;
+        try {
+            surface.present();
+            debugVkPresents++;
+        } catch (Throwable t) {
+            fail("overlay error", t);
+        }
+    }
+
+    /** Both backends, once a frame: borderless fullscreen and the window's lifecycle. False when there's no overlay. */
+    private static boolean beginFrame() {
         enforceBorderless();
         boolean want = wanted();
         boolean wantBorderless = wantsBorderless();
@@ -147,21 +223,14 @@ public final class Overlay {
         }
         if (want && window == 0) create();
         if (!want && window != 0) destroy();
-        if (window == 0) return;
-        presenting = true;
-        try {
-            syncWindow();
-            if (shown) blit();
-            String grab = debugGrabName;
-            if (grab != null) {
-                debugGrabName = null;
-                net.minecraft.client.Screenshot.grab(mc.gameDirectory, grab, target, 1, msg -> Prism.LOG.info("[overlay] {}", msg.getString()));
-            }
-            clearForNextFrame();
-        } catch (Throwable t) {
-            fail("overlay error", t);
-        } finally {
-            presenting = false;
+        return window != 0;
+    }
+
+    private static void grab() {
+        String grab = debugGrabName;
+        if (grab != null) {
+            debugGrabName = null;
+            net.minecraft.client.Screenshot.grab(mc.gameDirectory, grab, target, 1, msg -> Prism.LOG.info("[overlay] {}", msg.getString()));
         }
     }
 
@@ -187,10 +256,11 @@ public final class Overlay {
     private static void syncWindow() {
         long main = mc.getWindow().handle();
         long flags = SDL_GetWindowFlags(main);
-        // owned by Minecraft's window (other apps cover it like the game), and also hidden whenever the game
-        // isn't the focused window, so it can never show over anything else
-        boolean visible = debugForceVisible
-            || (!HIDDEN_TEST && (flags & SDL_WINDOW_INPUT_FOCUS) != 0 && (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) == 0);
+        // owned by Minecraft's window: Windows keeps it right above the game (and under any app in front of the
+        // game) and hides it with the game, so it only follows the game's own visibility. It used to hide whenever
+        // the game lost focus too, but on 26.3 showing it makes it the active window: the game lost focus, the
+        // overlay hid, focus came back, it showed again... a 15-20 Hz blink after every alt-tab
+        boolean visible = debugForceVisible || (!HIDDEN_TEST && (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) == 0);
         int[] r = rect(main);
         if (r[0] != lastX || r[1] != lastY || r[2] != lastW || r[3] != lastH) {
             lastX = r[0]; lastY = r[1]; lastW = r[2]; lastH = r[3];
@@ -201,7 +271,159 @@ public final class Overlay {
             // Win32 directly: SW_SHOWNA never activates it, so the game keeps focus
             User32.INSTANCE.ShowWindow(hwnd(window), visible ? SW_SHOWNA : SW_HIDE);
             shown = visible;
+            diag(visible ? "SHOW" : "HIDE");
         }
+        // it can still end up the active window (being shown, or alt-tab activating the game's last active owned
+        // window): hand activation straight back so keys keep going to the game. We're the foreground process then,
+        // so Windows lets us
+        if (shown) {
+            Pointer fg = User32.INSTANCE.GetForegroundWindow();
+            if (fg != null && Pointer.nativeValue(fg) == Pointer.nativeValue(hwnd(window))) {
+                User32.INSTANCE.SetForegroundWindow(hwnd(main));
+                diag("GIVE FOCUS BACK");
+            }
+        }
+    }
+
+    // ---- flicker diagnostics (temporary): who has focus each time the overlay shows/hides ----------------------
+
+    private static final int DIAG_CAP = 1500;
+    private static int diagLines, diagPresents, diagShownPresents, diagEmpty, diagOverlayEvents, diagGameExposed;
+    private static boolean diagMarked;
+    private static long diagUntil, diagSecond, diagTypeSecond;
+    private static final java.util.Map<String, Integer> diagTypeCount = new java.util.HashMap<>();
+    private static java.lang.reflect.Method dynFpsState;
+    private static boolean dynFpsLooked;
+
+    /**
+     * Per present: was Prism's HUD drawn into the overlay since the last one? For 30 s after any focus/show/hide
+     * change, one line a second with the counts (a blink is either the window hiding or a frame going out empty).
+     */
+    private static void diagFrame() {
+        diagPresents++;
+        if (shown) diagShownPresents++;
+        if (!diagMarked) diagEmpty++;
+        diagMarked = false;
+        long now = Util.getMillis();
+        if (now - diagSecond < 1000) return;
+        if (now < diagUntil && diagLines < DIAG_CAP) {
+            diagLines++;
+            Prism.LOG.info("[streamproof-diag] t={} last second: presents={} whileShown={} withoutPrismHud={} fpsLimit={} overlayEvents={} gameExposed={} overlayVisible={} dynamicFps={}",
+                now % 100000, diagPresents, diagShownPresents, diagEmpty, mc.gameRenderer.gameRenderState().framerateLimit,
+                diagOverlayEvents, diagGameExposed, window != 0 && User32.INSTANCE.IsWindowVisible(hwnd(window)), dynamicFpsState());
+        }
+        diagSecond = now;
+        diagPresents = diagShownPresents = diagEmpty = diagOverlayEvents = diagGameExposed = 0;
+    }
+
+    /** Dynamic FPS's power state when it's installed (it throttles rendering by focus / hover / visibility). */
+    private static String dynamicFpsState() {
+        if (!dynFpsLooked) {
+            dynFpsLooked = true;
+            try { dynFpsState = Class.forName("dynamic_fps.impl.DynamicFPSMod").getMethod("powerState"); } catch (Throwable ignored) {}
+        }
+        try { return dynFpsState == null ? "-" : String.valueOf(dynFpsState.invoke(null)); } catch (Throwable t) { return "?"; }
+    }
+
+    /** Logs the game window's focus state; window classes only, never titles. Capped so a flicker can't flood the log. */
+    private static void diag(String what) {
+        diagUntil = Util.getMillis() + 30000;
+        if (diagLines >= DIAG_CAP) return;
+        // at most 10 lines a second per kind, so a storm of one event can't eat the log
+        long now = Util.getMillis();
+        if (now - diagTypeSecond >= 1000) { diagTypeSecond = now; diagTypeCount.clear(); }
+        if (diagTypeCount.merge(what, 1, Integer::sum) > 10) return;
+        if (++diagLines == DIAG_CAP) Prism.LOG.info("[streamproof-diag] log cap reached");
+        try {
+            long main = mc.getWindow().handle();
+            long f = SDL_GetWindowFlags(main);
+            long kb = SDLKeyboard.SDL_GetKeyboardFocus();
+            Prism.LOG.info("[streamproof-diag] t={} {} focus={} mouse={} min={} hidden={} occluded={} fs={} borderless={} fg={} active={} kbFocus={} screen={} grabbed={}",
+                Util.getMillis() % 100000, what, has(f, SDL_WINDOW_INPUT_FOCUS), has(f, SDL_WINDOW_MOUSE_FOCUS), has(f, SDL_WINDOW_MINIMIZED),
+                has(f, SDL_WINDOW_HIDDEN), has(f, SDL_WINDOW_OCCLUDED), has(f, SDL_WINDOW_FULLSCREEN), borderless,
+                who(User32.INSTANCE.GetForegroundWindow(), main), who(User32.INSTANCE.GetActiveWindow(), main),
+                kb == 0 ? "none" : kb == main ? "game" : kb == window ? "OVERLAY" : "other",
+                mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName(), mc.mouseHandler.isMouseGrabbed());
+        } catch (Throwable t) {
+            Prism.LOG.error("[streamproof-diag] failed", t);
+        }
+    }
+
+    private static boolean has(long flags, long bit) { return (flags & bit) != 0; }
+
+    private static String who(Pointer h, long main) {
+        if (h == null || Pointer.nativeValue(h) == 0) return "none";
+        if (Pointer.nativeValue(h) == Pointer.nativeValue(hwnd(main))) return "game";
+        if (window != 0 && Pointer.nativeValue(h) == Pointer.nativeValue(hwnd(window))) return "OVERLAY";
+        IntByReference pid = new IntByReference();
+        User32.INSTANCE.GetWindowThreadProcessId(h, pid);
+        char[] cls = new char[128];
+        int n = User32.INSTANCE.GetClassNameW(h, cls, cls.length);
+        return (pid.getValue() == ProcessHandle.current().pid() ? "ours:" : "other:") + new String(cls, 0, Math.max(0, n));
+    }
+
+    /** Event watch: the game window's focus / show / occlusion events, in the order SDL gets them (overlay ones never get here). */
+    private static void diagEvent(SDL_Event e) {
+        int type = e.type();
+        if (type < SDLEvents.SDL_EVENT_WINDOW_FIRST || type > SDLEvents.SDL_EVENT_WINDOW_LAST || e.window().windowID() != mainId) return;
+        String name = switch (type) {
+            case SDLEvents.SDL_EVENT_WINDOW_FOCUS_GAINED -> "FOCUS_GAINED";
+            case SDLEvents.SDL_EVENT_WINDOW_FOCUS_LOST -> "FOCUS_LOST";
+            case SDLEvents.SDL_EVENT_WINDOW_SHOWN -> "SHOWN";
+            case SDLEvents.SDL_EVENT_WINDOW_HIDDEN -> "HIDDEN";
+            case SDLEvents.SDL_EVENT_WINDOW_OCCLUDED -> "OCCLUDED";
+            case SDLEvents.SDL_EVENT_WINDOW_MINIMIZED -> "MINIMIZED";
+            case SDLEvents.SDL_EVENT_WINDOW_RESTORED -> "RESTORED";
+            case SDLEvents.SDL_EVENT_WINDOW_MOUSE_ENTER -> "MOUSE_ENTER";
+            case SDLEvents.SDL_EVENT_WINDOW_MOUSE_LEAVE -> "MOUSE_LEAVE";
+            case SDLEvents.SDL_EVENT_WINDOW_EXPOSED -> { diagGameExposed++; yield null; }
+            default -> null;
+        };
+        if (name != null) diag("game " + name);
+    }
+
+    // ---- overlay events stay ours -----------------------------------------------------------------------------
+
+    private static SDL_EventFilter overlayFilter;
+
+    /**
+     * SDL hands every window's events to the same queue, and mods that read it (Dynamic FPS's WindowObserver, for
+     * one) don't check which window an event is for: the overlay hiding while you're tabbed out read as "the game was
+     * minimized", its occlusion / expose events flipped that back and forth, and every one counted as player
+     * activity. The filter drops the overlay's events before they're queued. SDL has one filter slot; if something
+     * already uses it we leave it alone (calling a foreign native filter from Java isn't safe).
+     */
+    private static void hookFilter() {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            org.lwjgl.PointerBuffer cb = stack.mallocPointer(1), ud = stack.mallocPointer(1);
+            if (SDLEvents.SDL_GetEventFilter(cb, ud) && cb.get(0) != 0) {
+                Prism.LOG.warn("[streamproof] another mod owns SDL's event filter; the overlay's window events stay visible to it");
+                return;
+            }
+        }
+        overlayFilter = SDL_EventFilter.create((userdata, ev) -> {
+            try {
+                if (window != 0 && SDLEvents.SDL_GetWindowFromEvent(SDL_Event.create(ev)) == window) {
+                    diagOverlayEvents++;
+                    return false;
+                }
+            } catch (Throwable t) {
+                Prism.LOG.error("[streamproof] event filter", t); // never let it unwind into SDL
+            }
+            return true;
+        });
+        SDLEvents.SDL_SetEventFilter(overlayFilter, 0L);
+    }
+
+    private static void unhookFilter() {
+        if (overlayFilter == null) return;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            org.lwjgl.PointerBuffer cb = stack.mallocPointer(1), ud = stack.mallocPointer(1);
+            // only clear the slot if it's still ours
+            if (SDLEvents.SDL_GetEventFilter(cb, ud) && cb.get(0) == overlayFilter.address()) SDLEvents.SDL_SetEventFilter(null, 0L);
+        }
+        overlayFilter.free();
+        overlayFilter = null;
     }
 
     private static void blit() throws Exception {
@@ -236,36 +458,72 @@ public final class Overlay {
         }
     }
 
+    /** Vulkan: the composite goes to the overlay's swapchain the way the game's frame goes to its own. */
+    private static void vkBlit() {
+        int[] px = pixelSize(window);
+        GpuSurface.Configuration cfg = surface.currentConfiguration().orElse(null);
+        if (surfaceStale || cfg == null || cfg.width() != px[0] || cfg.height() != px[1]) {
+            // the overlay is what you see, so it takes the game's present mode (vsync on or off)
+            GpuSurface.PresentMode mode = mc.windowSurface().currentConfiguration().map(GpuSurface.Configuration::presentMode)
+                .filter(surface.supportedPresentModes()::contains).orElse(GpuSurface.PresentMode.FIFO);
+            try {
+                surface.configure(new GpuSurface.Configuration(px[0], px[1], mode));
+                surfaceStale = false;
+            } catch (SurfaceException e) {
+                surfaceStale = true; // mid-resize or minimized; try again next frame
+                return;
+            }
+        }
+        composite();
+        try {
+            surface.acquireNextTexture();
+        } catch (SurfaceException e) {
+            surfaceStale = true; // out of date (resized): reconfigure next frame
+            return;
+        }
+        surface.blitFromTexture(RenderSystem.getDevice().createCommandEncoder(), composed.getColorTextureView());
+        String file = debugReadbackFile;
+        if (file != null) {
+            debugReadbackFile = null;
+            String name = java.nio.file.Path.of(file).getFileName().toString();
+            net.minecraft.client.Screenshot.grab(mc.gameDirectory, name, composed, 1, msg -> Prism.LOG.info("[streamproof] overlay readback: {}", msg.getString()));
+        }
+    }
+
+    /** Vulkan: the game's frame with Prism's layer blended on top, what the opaque overlay window shows. */
+    private static void composite() {
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
+        if (composed == null) composed = new TextureTarget("prism streamproof composite", main.width, main.height, GpuFormat.RGBA8_UNORM, null);
+        else if (composed.width != main.width || composed.height != main.height) composed.resize(main.width, main.height);
+        var encoder = RenderSystem.getDevice().createCommandEncoder();
+        encoder.copyTextureToTexture(main.getColorTexture(), composed.getColorTexture(), 0, 0, 0, 0, 0, main.width, main.height);
+        // the layer is resized at the end of the frame (clearForNextFrame): one vanilla-only frame after a resize
+        if (target.width != main.width || target.height != main.height) return;
+        try (RenderPass pass = encoder.createRenderPass(() -> "Prism streamproof composite", composed.getColorTextureView(), Optional.empty())) {
+            pass.setPipeline(RenderSystem.getCompiledPipeline(COMPOSITE));
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("InSampler", target.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+            pass.draw(3, 1, 0, 0);
+        }
+    }
+
     // ---- window lifecycle -----------------------------------------------------------------------------------
 
     private static void create() {
         if (Util.getPlatform() != Util.OS.WINDOWS) { fail("capture exclusion is a Windows feature", null); return; }
-        if (!openGl()) { requireOpenGl(); return; }
         long main = mc.getWindow().handle();
         mainId = SDL_GetWindowID(main);
         int[] r = rect(main);
 
-        // the backend's createWindow: same GL attributes (so the same pixel format) as the game's windows, which
-        // lets the backend's one context draw to it. Hidden until syncWindow shows it; never focusable; no taskbar.
-        long flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_BORDERLESS | SDL_WINDOW_TRANSPARENT | SDL_WINDOW_NOT_FOCUSABLE
-            | SDL_WINDOW_UTILITY | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-        window = new GlBackend().createWindow("Prism", Math.max(1, r[2]), Math.max(1, r[3]), flags);
+        // Hidden until syncWindow shows it; never focusable; no taskbar.
+        long flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_BORDERLESS | SDL_WINDOW_NOT_FOCUSABLE | SDL_WINDOW_UTILITY | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        // GL: the backend's createWindow, same GL attributes (so the same pixel format) as the game's windows, which
+        // lets the backend's one context draw to it. Vulkan: an opaque window for a swapchain of the game's device
+        window = openGl() ? new GlBackend().createWindow("Prism", Math.max(1, r[2]), Math.max(1, r[3]), flags | SDL_WINDOW_TRANSPARENT)
+            : SDL_CreateWindow("Prism", Math.max(1, r[2]), Math.max(1, r[3]), flags | SDL_WINDOW_VULKAN);
         if (window == 0) { fail("couldn't create the overlay window: " + SDLError.SDL_GetError(), null); return; }
         windowId = SDL_GetWindowID(window);
-
-        // can the game's context draw to it, and does its framebuffer have alpha (else it would be opaque black)
-        long gameWindow = SDL_GL_GetCurrentWindow(), ctx = SDL_GL_GetCurrentContext();
-        boolean current = SDL_GL_MakeCurrent(window, ctx);
-        int alpha = -1;
-        if (current) {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                IntBuffer a = stack.mallocInt(1);
-                if (SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, a)) alpha = a.get(0);
-            }
-        }
-        if (gameWindow != 0) SDL_GL_MakeCurrent(gameWindow, ctx);
-        if (!current) { fail("your GPU driver can't draw to a second window: " + SDLError.SDL_GetError(), null); return; }
-        if (alpha == 0) { fail("your GPU driver can't make transparent windows", null); return; }
+        if (openGl() && !checkGlWindow()) return;
 
         Pointer p = hwnd(window);
         // tool window: no taskbar button, not in alt-tab; never takes focus; mouse goes straight through to the game
@@ -281,13 +539,32 @@ public final class Overlay {
         }
 
         surface = RenderSystem.getDevice().createSurface(window, () -> false);
+        surfaceStale = false;
         RenderTarget m = mc.gameRenderer.mainRenderTarget();
         target = new TextureTarget("prism streamproof", m.width, m.height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
         clearForNextFrame();
         lastX = Integer.MIN_VALUE;
         shown = false;
         hookMoves();
-        Prism.LOG.info("[streamproof] overlay window ready ({}x{})", r[2], r[3]);
+        hookFilter();
+        Prism.LOG.info("[streamproof] overlay window ready ({}x{}, {})", r[2], r[3], openGl() ? "OpenGL" : "Vulkan");
+    }
+
+    /** GL: can the game's context draw to the overlay window, and does its framebuffer have alpha (else it would be opaque black). */
+    private static boolean checkGlWindow() {
+        long gameWindow = SDL_GL_GetCurrentWindow(), ctx = SDL_GL_GetCurrentContext();
+        boolean current = SDL_GL_MakeCurrent(window, ctx);
+        int alpha = -1;
+        if (current) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                IntBuffer a = stack.mallocInt(1);
+                if (SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, a)) alpha = a.get(0);
+            }
+        }
+        if (gameWindow != 0) SDL_GL_MakeCurrent(gameWindow, ctx);
+        if (!current) { fail("your GPU driver can't draw to a second window: " + SDLError.SDL_GetError(), null); return false; }
+        if (alpha == 0) { fail("your GPU driver can't make transparent windows", null); return false; }
+        return true;
     }
 
     /**
@@ -299,6 +576,7 @@ public final class Overlay {
             try {
                 SDL_Event e = SDL_Event.create(ev);
                 int type = e.type();
+                if (window != 0) diagEvent(e);
                 if (window == 0 || (type != SDLEvents.SDL_EVENT_WINDOW_MOVED && type != SDLEvents.SDL_EVENT_WINDOW_RESIZED)) return true;
                 SDL_WindowEvent w = e.window();
                 if (w.windowID() != mainId) return true;
@@ -336,14 +614,18 @@ public final class Overlay {
 
     private static void destroy() {
         unhookMoves();
+        unhookFilter();
         if (surface != null) {
-            if (!surface.isAcquired()) surface.close(); // an acquired one (error mid-blit) holds nothing native on GL
+            // an acquired one (error mid-blit) holds nothing native on GL; on Vulkan the frame's pending submit still
+            // uses its semaphores, so it's left alone there too
+            if (!surface.isAcquired()) surface.close();
             surface = null;
         }
         if (window != 0) SDL_DestroyWindow(window);
         window = 0;
         shown = false;
         if (target != null) { target.destroyBuffers(); target = null; }
+        if (composed != null) { composed.destroyBuffers(); composed = null; }
     }
 
     private static void fail(String why, Throwable t) {
@@ -356,15 +638,6 @@ public final class Overlay {
             dev.prismglass.util.ChatUtil.error("StreamProof off: " + why);
         }
         failed = false; // allow another try when re-enabled
-    }
-
-    /** Vulkan backend: switch the Graphics API option to OpenGL (applies on restart) and say so. */
-    private static void requireOpenGl() {
-        if (mc.options.preferredGraphicsBackend().get() != PreferredGraphicsApi.OPENGL) {
-            mc.options.preferredGraphicsBackend().set(PreferredGraphicsApi.OPENGL);
-            mc.options.save();
-        }
-        fail("it needs the OpenGL renderer (Vulkan windows can't be transparent). Graphics API is now OpenGL: restart Minecraft and turn it on again", null);
     }
 
     /** WDA_EXCLUDEFROMCAPTURE on/off; the dev test turns it off once to prove the overlay itself composites. */
@@ -485,5 +758,17 @@ public final class Overlay {
         boolean SetLayeredWindowAttributes(Pointer hwnd, int colorKey, byte alpha, int flags);
 
         boolean ShowWindow(Pointer hwnd, int cmdShow);
+
+        Pointer GetForegroundWindow();
+
+        Pointer GetActiveWindow();
+
+        int GetWindowThreadProcessId(Pointer hwnd, IntByReference pid);
+
+        int GetClassNameW(Pointer hwnd, char[] name, int max);
+
+        boolean IsWindowVisible(Pointer hwnd);
+
+        boolean SetForegroundWindow(Pointer hwnd);
     }
 }

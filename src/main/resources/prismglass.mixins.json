@@ -6,6 +6,7 @@
     "CameraMixin",
     "DevHiddenWindowMixin",
     "ClientConnectionMixin",
+    "ConnectScreenMixin",
     "ClientPlayNetworkHandlerMixin",
     "ClientPlayerEntityMixin",
     "EntityMixin",
@@ -28,6 +29,7 @@
     "ChatScreenMixin",
     "CommandSuggestionsMixin",
     "ItemInHandRendererMixin",
+    "EquipSpeedMixin",
     "ItemTransformMixin",
     "LivingEntityRendererMixin",
     "LevelRendererMixin",
@@ -61,7 +63,8 @@
     "AntiDropMixin",
     "AntiDropScreenMixin",
     "ClientRecipeBookAccessor",
-    "FurnaceMenuInvoker"
+    "FurnaceMenuInvoker",
+    "StructureRecordMixin"
   ],
   "injectors": {
     "defaultRequire": 1

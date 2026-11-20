@@ -1,5 +1,133 @@
 # Prism Glass changelog
 
+## Unreleased
+
+### AutoReconnect
+- New **AutoReconnect** (Client): after a kick or a lost connection it rejoins the last server after **Delay** seconds (2b2t queue, restarts). **MaxTries** (0 = forever), **SkipBans** (no rejoin when the kick says you're banned).
+- The disconnect screen gets **Reconnect to <server>** and a countdown button (click to cancel, or to start one while the module is off). **.reconnect** (**.rc**) rejoins from anywhere.
+- Never rejoins after Prism logged you out on purpose (AutoLog, StaffWatcher AutoLog).
+
+### Macros
+- **.macro set <name> <line; line; ...>**, **.macro add <name> <line>**, **bind**, **run**, **stop**, **show**, **del <name> [line#]**, **list**. A line is a Prism command (`.t surround`), a server command (`/home`), `!wait <ticks>` or plain chat; one line per tick.
+- Every macro gets a row in **ClickGUI → Keybinds**, so you can bind it with a click. Saved in `.minecraft/prism/macros.json` (all profiles).
+
+### DiscordRPC
+- New **DiscordRPC** (Client): server (or Singleplayer / menus), your **queue position** when the server prints one ("Position in queue: 412"), elapsed time, and a second line: Dimension, Health (HP + totems), Modules, Custom or None. **ShowServer** off hides the address.
+- Talks to Discord directly (no extra library). Needs your own Discord app: discord.com/developers/applications → New Application (its name is what Discord shows you playing) → copy the **Application ID** → `.set discordrpc clientid <id>`.
+
+### Addon API
+- Other mods can add modules and commands to Prism: a `"prismglass"` entrypoint implementing `dev.prismglass.api.PrismAddon`. Addon modules show in the ClickGUI, take binds and save in your profiles; addon commands get tab completion. **.addons** lists what loaded. Guide: ADDONS.md.
+
+### SeedCracker
+- New **SeedCracker** module (World): cracks the world seed from what you see, no seed needed. Exact structure starts (below) and the End pillar heights give the low 48 bits; the hashed seed the server sends on join finishes it instantly (servers that hide it: random-seed and text-seed shapes, then all 65536 candidates against biomes you've seen). A verified seed goes into **.seed**, so StructureFinder and Xray seed mode work straight away.
+- Data is kept per server (`.minecraft/prism/seedcracker`) and adds up over sessions; a start that doesn't fit with the others is dropped. Usually needs 4-8 temples/pyramids/huts/villages. **.crack** shows progress, **.crack reset** / **.crack retry**.
+- Settings: AutoApply, Threads (default: cores minus 3, low priority), HashedSeed, Biomes, Notify.
+- Can't work where the server changed its structure seeds (spigot.yml) or on terrain that isn't 26.x vanilla; it says so instead of guessing.
+
+### SlimeChunks, and lava in DangerESP
+- New **SlimeChunks** (Render): slime chunks from the world seed (.seed or SeedCracker) with vanilla's own rule, as green squares at your feet or at y 39 (where slimes spawn). Overworld only.
+- **DangerESP Lava** (on by default): lava within **LavaRange** that you can't see gets orange boxes (pockets behind blocks), and the block you're looking at turns red with **Lava behind! / beside! / above!** when mining it would let lava out.
+
+### Dev mark
+- Prism's developer (veritytunghacker) gets a small spinning glass prism over his head, drawn by Prism clients only (no packets, assets, keys or translations: nothing a server can see or probe).
+
+### Now playing lyrics
+- **Fixed:** no lyrics at all while LRCLIB is down (it answers every lookup with an error right now, and Musixmatch's old endpoint is gone). Lyrics now fall back to **NetEase Cloud Music**, which has synced sheets for most songs (credit lines dropped). Slowed / sped up tracks use NetEase's own upload when it has lyrics, otherwise the original's lyrics stretched to the track's length.
+
+### DangerESP
+- New **DangerESP** (Render): shows what can kill you nearby. End crystals, lit TNT/TNT minecarts (with the fuse), creepers (charged and hissing), charged respawn anchors outside the Nether and beds in the Nether/End get the **damage they'd do to you right now** (armour, blast protection, difficulty and cover included); anything that would kill you turns red, pulses and says **LETHAL**. Also projectiles flying at you, anvils/dripstone falling on you, withers/wardens/the dragon and players holding a mace, crystals or anchors.
+- **Box**: Box, Outline or Fill. **Tracers**: Off, Lethal (default) or All. **LethalOnly**, **Labels**, a toggle per threat, colours and fill opacity.
+
+### APanik
+- **Fixed:** leaving a server (or quitting) while APanik had everything switched off saved that as your setup, so your modules stayed off for good. Modules held off by a panic are now saved as they were before it.
+
+### CameraTweaks: stretched resolution and freelook
+- **Stretch** (CameraTweaks): the world and your hand are drawn for a narrower screen and stretched to fill yours, so everything looks wider, like stretched res in CS. **Ratio** 4:3, 5:4, 16:10, 1:1 or **Custom**. HUD and menus stay normal; ESP, labels and markers stay lined up.
+- **Freelook** (CameraTweaks): hold **Left Alt** (or set **FreelookMode** to Toggle) to look around with the mouse without turning: you keep walking where you were facing and the server never sees you turn. Goes to third person while held (**FreelookThirdPerson**).
+- **Fixed:** Freecam culled chunks and entities for where your player looked, not where the freecam looked; the culling frustum is now built from the freecam.
+
+### .structurefinder find
+- **Fixed:** seed mode could mark villages and outposts that don't exist right at biome borders (e.g. "village" in a snowy taiga): their biome was checked at the chunk centre instead of vanilla's spot. Now it's checked exactly where vanilla does, the middle of the start piece's real box (template size and rotation included). 17/17 villages and 4/4 outposts over 66k chunks in the accuracy test.
+- **Zombie (abandoned) villages**: predicted from the seed by making vanilla's own town-centre pick (same random, same order), so **.sf find zombie_village** marks the nearest one and seed markers say "Zombie village"; in loaded chunks the best-matching town centre decides between Village and Zombie village.
+- **.sf find biome_<biome>** finds the nearest spot of any biome from the seed (vanilla's /locate biome search, client-side): `.sf find biome_sulfur_caves`, `biome_cherry_grove`, `biome_mushroom_fields`... Cave biomes get the depth too. Tab lists every biome.
+- **.structurefinder find <structure>** (also **.sf**): marks the nearest predicted structure of that kind (needs the seed: .seed or SeedCracker), with a beam, a line and its distance; the marker goes away once you're within 50m (**.sf stop** removes it). Tab completes every kind, exact id (village_plains, ruined_portal_nether...) and friendly names (oak_village, desert_village, spruce_village, witch_hut...).
+
+### StructureFinder: no more false finds in Loaded mode
+- **Jungle temples, desert pyramids, swamp huts and village centres** only count when their whole vanilla layout is there (built by vanilla's own piece code, or read from the game's templates, in every orientation), starting exactly on a chunk corner like real ones. A lone tripwire hook (trial chambers have them), bell, blue terracotta or flower pot no longer counts.
+- **Everything else** needs blocks players can't get (end portal frames, trial spawners, reinforced deepslate, end gateways) or several structure-only blocks together in the right dimension (monuments: sea lanterns + dark prismarine + lots of prismarine; fortresses: fences + lots of nether bricks; bastions, end cities, ruined portals likewise).
+- Chunks where part of a candidate structure isn't loaded yet are checked again later instead of guessed.
+
+### Pick mobs one by one in ESP, Chams and Tracers
+- **Entities** list in **ESP**, **Chams** and **Tracers**: add individual mobs (zombie, creeper, villager, ...) with the list editor (type to search, spawn-egg icons). Listed mobs always show, whatever Hostiles / Passives say; **ListOnly** (ESP, Chams) shows only the listed ones. ESP has its own **ListColor**, Tracers a **MobColor** and a new **Players** toggle (on, as before).
+- **Fixed:** choice lists in the ClickGUI (APanik Triggers, StaffWatcher LogOn) wouldn't take any entry: the editor lowercased it and then didn't recognise it.
+
+### APanik (auto panic)
+- **New module APanik** (Client): when another player shows up, every module switches off except the **Keep** list (StreamProof by default). With **Restore** on (default) the same modules come back on once nobody has triggered it for **ClearDelay** seconds (3); only the ones APanik switched off, and only if they're still off. Switching APanik off mid-panic brings them back too.
+- **Triggers** (pick any): **Rendered** (a player is loaded at all), **InRange** (within **Range**, 32), **OnScreen** (in your field of view), **CanSeeYou** (a clear line of sight to your eyes, chest or feet), **LookingAtYou** (their crosshair within **LookAngle** of you; **LookThroughWalls** optional). Range applies to all but Rendered.
+- Friends and NPCs (players missing from the tab list) are ignored by default; spectators never count. **Alert** says who set it off (a hidden toast while StreamProof is on). The HUD list shows **PANIK** while it's active.
+
+### StreamProof works on Vulkan
+- **StreamProof no longer needs the OpenGL renderer.** Vulkan windows can't be see-through, so on Vulkan the hidden window shows the whole frame (the game with Prism drawn on top) and sits over the game window, which still gets the plain vanilla frame. OBS, Discord and screenshots see the game window; you see the hidden one. Turning it on under Vulkan no longer switches your Graphics API to OpenGL.
+
+### AutoMace: harder smashes + Spam (BETA) elytra loop
+- **AutoHit smashes later**: at the last tick before landing or falling out of reach (every extra block adds damage), and straight away once you've fallen 8+ blocks (each further block is only +1, not worth risking the crit). It aims for the whole fall and leads a moving target, so the one-tick reach window isn't missed.
+- **Every smash is a crit now**: the server judges the hit's charge with the item you held *before* the swap, so AutoMace keeps your sword in hand and only swaps to the mace for the hit (full charge = x1.5 on top of the smash bonus). Tested on a 1000 HP dummy: WindJump hits went from 38.6 to 40.7 average, every one a crit.
+- **Spam (BETA)**: an elytra loop. Rocket straight up to **Height** (24) above the target, glide to the drop point (leading it by your drift and its walk), swap the elytra for a chestplate (gliding blocks smashes), fall and smash, then elytra straight back on, rocket up, repeat. Only lets go once your sword has recharged since the last rocket (rockets reset the charge on 26.3). Needs an elytra, a chestplate, a mace and rockets (offhand is best); a sword in the hotbar makes every hit a crit.
+- **Right click a player** to pick the Spam target (up to 128 blocks; right click them again to clear). **AutoTarget** goes for the nearest enemy when nothing is picked.
+- **Safety**: drops are capped at 14 blocks over a target that's walking; if a drop is going to miss, it opens the elytra again while there's still height to catch the fall, and only commits when the target is nearly straight below. Switching Spam or AutoMace off mid-drop puts the elytra back on and glides instead of letting you fall.
+- Tested on a 1000 HP dummy (64 s runs): standing still **11-14 smashes, avg 71-79, max 90**, never hurt. Walking back and forth **6-11 smashes, avg ~56**, but in 1 of 2 runs a missed drop still cost a fall: against a strafing player, keep your health up (Feather Falling helps).
+
+### Cracked-Bedrock bots (self-contained, every version)
+- **`.joinbedrock <name> [host] [port] [protocol]`** (`.jb`): a real Bedrock-protocol bot - a RakNet/UDP connection that logs in self-signed (offline, no Xbox auth), entirely inside the Java client. The Bedrock stack (Cloudburst) is bundled jar-in-jar, so there's **no extra mod and no external program** - Fabric API stays the only requirement, and nothing from ViaVersion/ViaBedrock is used. `.leavebedrock <name|all>` (`.lb`) disconnects.
+- **Speaks every Bedrock version Cloudburst ships (1.16.0 ... 1.26.60), and auto-picks the right one**: it pings the server first, reads its protocol version, and uses the matching codec. Defaults to the newest if the ping fails; the optional `[protocol]` forces/spoofs a specific version number.
+- Does the full handshake itself: RakNet connect -> network settings/compression -> self-signed Login -> ECDH encryption -> resource-pack prompts -> StartGame -> spawn. (The skin/client-data blob is the remaining thing most likely to need a per-server tweak.)
+
+### Phase (walk through blocks)
+- New **Phase** movement module (alias `noclip`): turns off your block collision and flies you with WASD / jump / sneak, so you pass through walls and floors. No-anticheat servers only – Grim / NCP / Vulcan set you straight back. Speed, VerticalSpeed, NoFall.
+
+### StaffWatcher: ignore NPCs; new .goto
+- **IgnoreNPCs** (default on): fake players (ZNPCs, Citizens, mannequins) no longer flag as staff or vanishes. A body never backed by a real connection, a Citizens version-2 UUID, or a name in **NPCNames** is skipped; names on your staff list are never treated as NPCs.
+- **`.goto <player>`** (`.tpto`): teleport to a loaded player via position packets. No-anticheat servers only – Grim/NCP will set you back.
+
+### Bots: follow, drop, inventory view, and an experimental seamless switch
+- Bots now decode their own inventory and the positions of nearby players (they threw this away before).
+- **`.playerfollow <bot|all> <player|off>`** (`.pf`, `.botfollow`): the bot walks after a player who is loaded near it.
+- **`.playerdrop <bot|all> <slot 1-9|all> [qty|max]`** (`.pd`, `.botdrop`): drop a hotbar slot, or all of the main inventory.
+- **`.viewplayerbotinventory <bot>`** (`.botinv`, `.vpbi`): print what a bot is holding, no switching.
+- **`.switchplayer <bot> fast`** (experimental): seamless switch that adopts the bot's live connection and rebuilds the world from a recorded packet log, so the server sees no new join (no AuthMe spawn teleport / re-login). On any failure it logs the cause and falls back to the normal relog, so you are never left stuck. Needs live testing.
+
+### Fixed: typing into Prism text fields on 26.3
+- The ClickGUI search, typing a setting value, the Accounts and Proxies boxes took no letters on 26.3. 26.3's new input system (SDL3) only sends typed characters while a text box has switched text input on; Minecraft's own boxes do that, Prism's didn't. They do now.
+
+### StaffWatcher: better AntiVanish, AutoLog, new visuals
+- **ChatCheck:** someone chatting who is connected but not in the tab list is vanished (chat carries the sender).
+- **DespawnCheck:** a staff member's body disappearing within DespawnRange (32) while they stay connected = vanished (or teleported).
+- **VanishTags:** "[V]" / "vanished" in a tab name, team prefix or team name counts as vanished staff.
+- **Probe** now asks several commands in turn (minecraft:msg, minecraft:tell, minecraft:w by default), drops ones that never answer with names, and keeps what each of them last said.
+- **AutoLog:** Disconnect, Panic (every module off, StaffWatcher keeps watching) or Both when a chosen alert fires (LogOn: Watching, Spectator, Vanish, Ghost, Invisible, Near, Joined). LogListedOnly, LogOnce.
+- **Visuals:** a glass HUD panel of staff online (watching / hidden [V] / spectator / distance, drag it in the HUD editor), a red screen-edge pulse and "WATCHED by" banner while staff look at you, StaffESP (box + their look line, red when it's on you) and fading beacon Markers where someone vanished, went spectator or a ghost was heard.
+
+### SusChunks: anti-xray bypass and kelp
+- New **Light** method: anti-xray rewrites the blocks in chunk packets but sends the block light the server computed. Amethyst clusters are the only block that gives light 5 and large buds the only one that gives 4, so the light data alone counts them. **Auto** now falls back to Light whenever a chunk has cluster light but no visible budding amethyst, and uses Light on Folia. LightGrowth threshold (85%).
+- New **Kelp** signal: kelp tops generate at age 20-23 and only reach 25 by growing (about 10-40 minutes loaded), so ocean chunks full of max-age kelp were kept loaded. Own colour, labels, counts toward the Area.
+- **Beams:** a breathing light beam up from every flagged chunk.
+
+### PluginScanner
+- 40 more signatures: vanish plugins (SuperVanish, PremiumVanish, VanishNoPacket, AdvancedVanish, SayanVanish), staff tools (StaffPlusPlus, OpenInv, InvSee++, LibertyBans, BanManager, Plan), exploit fixers (AnarchyExploitFixes, IllegalStack, ExploitFixer, LPX), storage (PlayerVaults, AxVaults, Minepacks, backpacks, ShulkerPacks, BetterShulkerBoxes, AxShulkers, ender chest plugins) and markets (AuctionHouse, zAuctionHouse, CrazyAuctions, AxAuctions, PlayerAuctions, TradeSystem, TradePlus, AxTrade, EconomyShopGUI, Shopkeepers, DeluxeSellwands, crates, DeluxeMenus, Duels).
+- **Advice** after a scan: the AntiCheat preset for the detected anticheat, StaffWatcher for vanish/staff plugins, SusChunks Light on anti-xray servers, which PluginDupe preset fits each storage/market plugin, and a warning when an exploit fixer is there. **AutoSetup** applies it.
+- **History:** remembers each server's plugins (prism/plugin_history.json) and says what was added or removed since your last visit.
+
+### PluginDupe (anarchy, new) and `.dupe`
+- Replays plugin dupe races exactly: a short script sent in one tick (cmd, waitgui, store, take, click, close, closeall, drop, use, mountinv, dismount, kick, disconnect, wait). `kick` sends an invalid movement packet so the server kicks you right after everything before it, saving your player file before a plugin saves its storage.
+- Presets: VaultKick, VaultTake, EChestKick, ShulkerKick, MountKick (donkey/llama chests), CloseRace, SpamClick (auction/shop/trade GUIs), SwapRace, DropKick, Custom. `.dupe <preset> [command]`, `.dupe list`, `.dupe stop`. Vanilla/Paper never duplicate with these alone: they need a plugin with the race (PluginScanner's advice says which preset fits).
+
+### NoSlow: old-Grim modes
+- **GrimOffhand** (main-hand use + an off-hand use packet every tick) and **GrimSwitch** (off-hand use + hotbar swap away and back every tick): the two public full-speed Grim NoSlows. Read from Grim's source: 2.3.74 patched both, so they're for servers on older Grim builds; **Grim** (every other tick, 0 alerts on 2.3.74) stays the default. The server keeps eating through both tricks (tested).
+
+### FatigueAnim (render, new) and Inspect
+- **FatigueAnim:** the mining fatigue look without the effect: your swing plays slower like fatigue at Level I-X (+2 ticks per level), Inspect and the item-switch hand movement slow by the same ratio. Visual only.
+- **Inspect** is now keybind only: gone from the Render panel, always ready, Panic and old profiles can't switch it off. Real mining fatigue (and FatigueAnim) now slows the inspect animation the way it slows the swing.
+
 ## 1.6.3 for 26.3 - 2026-10-24
 
 Port of 1.6.3 to Minecraft 26.3 (Fabric Loader 0.20.1, Fabric API 0.165.0, Loom 1.19.3 on Gradle 9.8.2, Java 25). Same modules and settings; old configs and GLFW key binds carry over. API mapping notes in PORTING.md.

@@ -12,15 +12,26 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 
 public class Tracers extends Module {
+    public final BoolSetting players = bool("Players", true, "Lines to players.");
+    public final ListSetting entities = list("Entities", "", "Mobs to draw lines to too, one by one (zombie, creeper, villager...).", ListSetting.Kind.ENTITY);
+    public final ColorSetting mobColor = color("MobColor", 0xFF74C0FC, "Lines to mobs from the Entities list.");
     public final ModeSetting colorMode = mode("Color", "Distance", "Colour by distance or fixed.", "Distance", "Fixed");
     public final ColorSetting color = color("FixedColor", 0xFFFF5C7A, "Fixed tracer colour.");
     public final BoolSetting friends = bool("Friends", true, "Draw to friends (green).");
     public final NumberSetting alpha = num("Alpha", 200, 20, 255, 1, "Line opacity.");
 
-    public Tracers() { super("Tracers", "Lines to players.", Category.RENDER); }
+    public Tracers() { super("Tracers", "Lines to players (and mobs from a list).", Category.RENDER); }
 
     @Override
     public void onRender3D(PoseStack matrices, float delta) {
+        if (!entities.items().isEmpty()) {
+            for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+                if (e instanceof Player || e == mc.player || !entities.has(e)) continue;
+                Vec3 to = e.getPosition(delta).add(0, e.getBbHeight() * 0.5, 0);
+                Render3D.tracer(to, ColorUtil.withAlpha(mobColor.color(), alpha.getInt()));
+            }
+        }
+        if (!players.get()) return;
         for (Player p : mc.level.players()) {
             if (p == mc.player) continue;
             boolean friend = Prism.friends().isFriend(p);

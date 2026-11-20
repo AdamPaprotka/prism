@@ -35,7 +35,7 @@ public class KeyActions extends Module {
         super("Keybinds", "Binds for non-module actions (ClickGUI → Keybinds).", Category.CLIENT);
         drawn.set(false);
         setEnabledSilently(true);
-        actions.add(new Action("Inspect", "CS:GO-style inspect of your held item (settings: Render → Inspect)", inspect,
+        actions.add(new Action("Inspect", "CS:GO-style inspect of your held item (slowed by mining fatigue and FatigueAnim)", inspect,
             () -> Prism.modules().get(dev.prismglass.module.render.Inspect.class).trigger()));
         actions.add(new Action("Quick Pearl", "Throw a pearl without switching to it", quickPearl, this::throwPearl));
         actions.add(new Action("Mark Waypoint", "Waypoint where you stand", markWaypoint, () -> {
@@ -51,19 +51,37 @@ public class KeyActions extends Module {
         }));
         actions.add(new Action("HUD Editor", "Open the HUD editor", hudEditor, () -> mc.gui.setScreen(new dev.prismglass.gui.HudEditorScreen(null))));
         actions.add(new Action("Panic", "Turn every module off", panic, () -> {
-            for (Module m : Prism.modules().all()) if (m.isEnabled() && m != this && !(m instanceof AntiCheat) && !(m instanceof Hud) && !(m instanceof dev.prismglass.module.Service)) m.setEnabled(false);
+            panic();
             ChatUtil.info("Panic: everything off");
         }));
     }
 
-    public List<Action> actions() { return actions; }
+    /** Built-in actions followed by one row per macro (prism/macros.json). */
+    public List<Action> actions() {
+        if (Prism.macros() == null) return actions;
+        List<Action> all = new ArrayList<>(actions);
+        for (var m : Prism.macros().all())
+            all.add(new Action("Macro: " + m.name, m.lines.size() + " line(s) - edit with .macro", m.key, () -> Prism.macros().run(m.name)));
+        return all;
+    }
+
+    /** Turns every module off except the client plumbing (AntiCheat, HUD, services, internal ones). */
+    public static void panic() { panic(null); }
+
+    /** Panic that leaves {@code keep} on (StaffWatcher's AutoLog keeps watching). */
+    public static void panic(Module keep) {
+        for (Module m : Prism.modules().all())
+            if (m.isEnabled() && m != keep && !m.internal() && !(m instanceof AntiCheat) && !(m instanceof Hud) && !(m instanceof dev.prismglass.module.Service)) m.setEnabled(false);
+    }
+
+    @Override public boolean internal() { return true; }
 
     @Override public void toggle() { /* always on */ }
 
     /** Key pressed in game (not in a screen). */
     public void onKeyPress(int key) {
         if (key == KeyUtil.NONE || mc.player == null || mc.gui.screen() != null) return;
-        for (Action a : actions) if (a.key().get() == key) a.run().run();
+        for (Action a : actions()) if (a.key().get() == key) a.run().run();
     }
 
     private void throwPearl() {

@@ -21,7 +21,7 @@ loom {
         client {
             if (project.hasProperty('audit')) vmArg '-Dprismglass.audit=true'
             // automated tests run in an invisible, unfocused window (StreamProof/fullscreen tests need a visible one)
-            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest', 'holotest', 'sustest', 'rebreaktest', 'pingspiketest', 'pluginstest', 'proxytest', 'bottest', 'behindtest', 'inspecttest', 'modtest']
+            if (['audit', 'guitest', 'guiblocky', 'hudtest', 'pearltest', 'combattest', 'xraytest', 'structtest', 'cracktest', 'cameratest', 'elytratest', 'flighttest', 'pflytest', 'crystaltest', 'elytrabottest', 'grimtest', 'minetest', 'dupetest', 'stafftest', 'holotest', 'sustest', 'rebreaktest', 'pingspiketest', 'pluginstest', 'proxytest', 'bottest', 'behindtest', 'inspecttest', 'modtest', 'sphiddentest', 'addontest']
                     .any { project.hasProperty(it) } && !project.hasProperty('visible')) {
                 vmArg '-Dprismglass.hidden=true'
                 // the tests were laid out against a 1920x1080 window (26.1.2's hidden fullscreen); a hidden window can't
@@ -29,6 +29,7 @@ loom {
                 programArgs '--width', '1920', '--height', '1080'
             }
             if (project.hasProperty('guitest')) vmArg '-Dprismglass.guitest=true'
+            if (project.hasProperty('addontest')) vmArg '-Dprismglass.addontest=true'
             if (project.hasProperty('guiblocky')) vmArg '-Dprismglass.guiblocky=true'
             if (project.hasProperty('hudtest')) vmArg '-Dprismglass.hudtest=true'
             if (project.hasProperty('pearltest')) vmArg '-Dprismglass.pearltest=true'
@@ -53,10 +54,13 @@ loom {
             if (project.hasProperty('xraytest')) vmArg '-Dprismglass.xraytest=true'
             if (project.hasProperty('streamtest')) vmArg '-Dprismglass.streamtest=true'
             if (project.hasProperty('nosp')) vmArg '-Dprismglass.streamtest.nosp=true'
+            if (project.hasProperty('sphiddentest')) { vmArg '-Dprismglass.streamtest=true'; vmArg '-Dprismglass.streamtest.hidden=true' }
             if (project.hasProperty('gltrace')) vmArg '-Dprismglass.gltrace=true'
             if (project.hasProperty('exactfs')) vmArg '-Dprismglass.exactfs=true'
             if (project.hasProperty('fstest')) vmArg '-Dprismglass.fstest=true'
             if (project.hasProperty('structtest')) vmArg '-Dprismglass.structtest=true'
+            if (project.hasProperty('cracktest')) vmArg '-Dprismglass.cracktest=true'
+            if (project.hasProperty('cameratest')) vmArg '-Dprismglass.cameratest=true'
             if (project.hasProperty('elytratest')) vmArg '-Dprismglass.elytratest=true'
             if (project.hasProperty('flighttest')) vmArg '-Dprismglass.flighttest=true'
             if (project.hasProperty('pflytest')) vmArg '-Dprismglass.pflytest=true'

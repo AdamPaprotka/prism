@@ -26,6 +26,7 @@ public class AutoLog extends Module {
         else if (onPlayer.get() && EntityUtil.closestEnemy(playerRange.get()) != null) reason = "player nearby";
         if (reason == null) return;
         setEnabled(false);
+        dev.prismglass.module.client.AutoReconnect.blockOnce();
         mc.getConnection().getConnection().disconnect(Component.literal("[Prism AutoLog] " + reason));
     }
 }

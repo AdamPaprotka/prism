@@ -33,7 +33,8 @@ import net.minecraft.util.Mth;
  * shows), so there's no login: a PowerShell script (assets/prismglass/spotify.ps1, no helper exe for antivirus to
  * flag) prints the track, timeline and Spotify's own cover. Other players' covers come from an iTunes search. Synced lyrics come from Musixmatch when the source is Spotify (its desktop app's API, with
  * one guest token reused and saved in prism/musixmatch.properties: it bans IPs that hammer it), else or on a miss
- * from LRCLIB; the cover comes from the iTunes search API. Only the artist, title and album are sent. Nothing is logged.
+ * from LRCLIB, and when that misses or is down, from NetEase Cloud Music (which also has many slowed / sped up versions
+ * with their own timing); the cover comes from the iTunes search API. Only the artist, title and album are sent. Nothing is logged.
  */
 public final class NowPlaying {
     private static final Minecraft mc = Minecraft.getInstance();
@@ -324,6 +325,15 @@ public final class NowPlaying {
      * 3:00 song slowed to 3:45 gets its lines 1.25x later.
      */
     private static void tempoLyrics(int gen, String t, String a, long dur) {
+        // NetEase often has the exact slowed / sped up upload, timed for it: no stretching needed
+        netease(t, a, dur).thenAccept(exact -> {
+            if (gen != generation) return;
+            if (!exact.lines().isEmpty()) { lyrics = exact.lines(); lyricsLoading = false; }
+            else stretchedLyrics(gen, t, a, dur);
+        });
+    }
+
+    private static void stretchedLyrics(int gen, String t, String a, long dur) {
         String base = baseTitle(t);
         get("https://lrclib.net/api/search?track_name=" + q(base) + "&artist_name=" + q(a)).thenCompose(b -> {
             JsonObject hit = firstSynced(b);
@@ -331,15 +341,25 @@ public final class NowPlaying {
             return get("https://lrclib.net/api/search?track_name=" + q(base)).thenApply(NowPlaying::firstSynced);
         }).whenComplete((hit, err) -> {
             if (gen != generation) return;
-            List<Line> l = List.of();
             if (hit != null) {
                 double orig = hit.has("duration") && !hit.get("duration").isJsonNull() ? hit.get("duration").getAsDouble() : 0;
-                double ratio = orig > 0 && dur > 0 ? Mth.clamp(dur / 1000.0 / orig, 0.5, 2.0) : 1;
-                l = parse(hit).stream().map(x -> new Line(Math.round(x.time() * ratio), x.text())).toList();
+                lyrics = stretch(parse(hit), orig * 1000, dur);
+                lyricsLoading = false;
+                return;
             }
-            lyrics = l;
-            lyricsLoading = false;
+            // LRCLIB missed (or is down): the original from NetEase, stretched the same way
+            netease(base, a, 0).thenAccept(n -> {
+                if (gen != generation) return;
+                lyrics = stretch(n.lines(), n.duration(), dur);
+                lyricsLoading = false;
+            });
         });
+    }
+
+    /** Timestamps scaled by (this track's length / the original's length); unchanged when either is unknown. */
+    private static List<Line> stretch(List<Line> lines, double origMs, long dur) {
+        double ratio = origMs > 0 && dur > 0 ? Mth.clamp(dur / origMs, 0.5, 2.0) : 1;
+        return lines.stream().map(x -> new Line(Math.round(x.time() * ratio), x.text())).toList();
     }
 
     private static void lrclib(int gen, String t, String a, String al, long dur) {
@@ -360,8 +380,72 @@ public final class NowPlaying {
             });
         }).whenComplete((l, err) -> {
             if (gen != generation) return;
-            lyrics = l == null ? List.of() : l;
-            lyricsLoading = false;
+            if (l != null && !l.isEmpty()) { lyrics = l; lyricsLoading = false; return; }
+            // LRCLIB missed (or is down): NetEase
+            netease(t, a, dur).thenAccept(n -> {
+                if (gen != generation) return;
+                lyrics = n.lines();
+                lyricsLoading = false;
+            });
+        });
+    }
+
+    // ---- NetEase Cloud Music (fallback) -----------------------------------------------------------------
+
+    private static final String[] NETEASE_HEADERS = {"User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer", "https://music.163.com/"};
+    /** Credit lines NetEase puts at the top of its sheets ("作词 : ...", "Producer : ..."). */
+    private static final Pattern CREDIT = Pattern.compile("(?i)^(作词|作曲|编曲|制作人|混音|母带|和声|吉他|贝斯|鼓|录音|监制|出品|统筹|词|曲|lyricist|lyrics|composer|producer|arranger|written by)\\s*[:：].*");
+
+    /** A NetEase sheet and the length of the song it belongs to (ms, 0 = unknown). */
+    private record NeteaseHit(List<Line> lines, long duration) {
+        static final NeteaseHit NONE = new NeteaseHit(List.of(), 0);
+    }
+
+    private static String norm(String s) { return s.toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", ""); }
+
+    /** Synced lyrics from NetEase: the best search hit whose title and an artist match, empty if none. */
+    private static java.util.concurrent.CompletableFuture<NeteaseHit> netease(String t, String a, long dur) {
+        String title = norm(t), artist = norm(a);
+        return get("https://music.163.com/api/search/get?s=" + q(t + " " + a) + "&type=1&limit=10", NETEASE_HEADERS).thenCompose(body -> {
+            List<long[]> ranked = new ArrayList<>(); // {id, score, duration}
+            try {
+                JsonObject res = body == null ? null : JsonParser.parseString(body).getAsJsonObject().getAsJsonObject("result");
+                JsonArray songs = res == null || !res.has("songs") ? new JsonArray() : res.getAsJsonArray("songs");
+                for (JsonElement e : songs) {
+                    JsonObject s = e.getAsJsonObject();
+                    String name = norm(str(s, "name"));
+                    int score = name.equals(title) ? 3 : !name.isEmpty() && (name.contains(title) || title.contains(name)) ? 1 : 0;
+                    if (score == 0) continue;
+                    boolean artistOk = false;
+                    if (s.has("artists")) for (JsonElement ar : s.getAsJsonArray("artists")) {
+                        String n = norm(str(ar.getAsJsonObject(), "name"));
+                        if (!n.isEmpty() && (artist.contains(n) || n.contains(artist))) artistOk = true;
+                    }
+                    if (!artistOk) continue;
+                    long d = s.has("duration") ? s.get("duration").getAsLong() : 0;
+                    if (dur > 0 && d > 0 && Math.abs(d - dur) < 3000) score += 2;
+                    ranked.add(new long[]{s.get("id").getAsLong(), score, d});
+                }
+            } catch (RuntimeException ignored) {
+                // not the shape we expect: no lyrics from here
+            }
+            ranked.sort((x, y) -> Long.compare(y[1], x[1]));
+            return neteaseLyrics(ranked, 0);
+        });
+    }
+
+    /** The first of these songs (best first, at most 3 tried) that has a real synced sheet. */
+    private static java.util.concurrent.CompletableFuture<NeteaseHit> neteaseLyrics(List<long[]> ranked, int i) {
+        if (i >= Math.min(3, ranked.size())) return java.util.concurrent.CompletableFuture.completedFuture(NeteaseHit.NONE);
+        return get("https://music.163.com/api/song/lyric?id=" + ranked.get(i)[0] + "&lv=1", NETEASE_HEADERS).thenCompose(body -> {
+            List<Line> l = List.of();
+            try {
+                JsonObject o = body == null ? null : JsonParser.parseString(body).getAsJsonObject();
+                if (o != null && o.has("lrc")) l = parseLrc(str(o.getAsJsonObject("lrc"), "lyric"), true);
+            } catch (RuntimeException ignored) {
+            }
+            return l.isEmpty() ? neteaseLyrics(ranked, i + 1) : java.util.concurrent.CompletableFuture.completedFuture(new NeteaseHit(l, ranked.get(i)[2]));
         });
     }
 
@@ -448,12 +532,19 @@ public final class NowPlaying {
 
     private static List<Line> parse(JsonObject o) {
         String synced = o.has("syncedLyrics") && !o.get("syncedLyrics").isJsonNull() ? o.get("syncedLyrics").getAsString() : "";
+        return parseLrc(synced, false);
+    }
+
+    /** An LRC sheet's timed lines (credits dropped when asked); empty unless it's a real sheet. */
+    private static List<Line> parseLrc(String synced, boolean dropCredits) {
         List<Line> out = new ArrayList<>();
         for (String raw : synced.split("\n")) {
             Matcher m = LRC.matcher(raw.trim());
             if (!m.matches()) continue;
+            String text = m.group(3).trim();
+            if (dropCredits && CREDIT.matcher(text).matches()) continue;
             long ms = Long.parseLong(m.group(1)) * 60_000 + Math.round(Double.parseDouble(m.group(2)) * 1000);
-            out.add(new Line(ms, m.group(3).trim()));
+            out.add(new Line(ms, text));
         }
         // LRCLIB has some junk uploads (one "probe" line...): only trust a real sheet
         long words = out.stream().filter(l -> !l.text().isEmpty()).count();
@@ -461,8 +552,12 @@ public final class NowPlaying {
     }
 
     private static java.util.concurrent.CompletableFuture<String> get(String url) {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10))
-            .header("User-Agent", "PrismGlass/" + Prism.VERSION + " (minecraft mod)").GET().build();
+        return get(url, "User-Agent", "PrismGlass/" + Prism.VERSION + " (minecraft mod)");
+    }
+
+    /** GET with these headers (name, value, name, value...); the body on a 200, else null. */
+    private static java.util.concurrent.CompletableFuture<String> get(String url, String... headers) {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).headers(headers).GET().build();
         return HTTP.sendAsync(req, HttpResponse.BodyHandlers.ofString())
             .thenApply(r -> r.statusCode() == 200 ? r.body() : null)
             .exceptionally(e -> null);

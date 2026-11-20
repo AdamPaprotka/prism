@@ -21,6 +21,8 @@ public class Chams extends Module {
     public final BoolSetting hostiles = bool("Hostiles", false, "Monsters.");
     public final BoolSetting passives = bool("Passives", false, "Animals.");
     public final BoolSetting self = bool("Self", false, "You (third person).");
+    public final ListSetting entities = list("Entities", "", "Mobs to colour one by one (zombie, creeper, villager...): always coloured, whatever Hostiles / Passives say.", ListSetting.Kind.ENTITY);
+    public final BoolSetting listOnly = bool("ListOnly", false, "Colour only mobs from the Entities list (Players still follows its toggle).");
     public final ColorSetting color = color("Color", 0x90FF4D8A, "Enemy colour (alpha = see-through amount).");
     public final ColorSetting friend = color("Friend", 0x904DFF8A, "Friend colour.");
     public final ColorSetting mob = color("Mob", 0x80FFB84D, "Mob colour.");
@@ -34,6 +36,8 @@ public class Chams extends Module {
             if (!players.get() || p.isSpectator()) return 0;
             return Prism.friends().isFriend(p) ? friend.color() : color.color();
         }
+        if (entities.has(e)) return mob.color();
+        if (listOnly.get()) return 0;
         if (e instanceof Enemy) return hostiles.get() ? mob.color() : 0;
         if (e instanceof Animal) return passives.get() ? mob.color() : 0;
         return 0;

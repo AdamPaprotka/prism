@@ -1,11 +1,20 @@
 package dev.prismglass.module.client;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.blaze3d.vertex.PoseStack;
+import dev.prismglass.Prism;
 import dev.prismglass.event.PacketEvent;
+import dev.prismglass.gui.render.Glass;
 import dev.prismglass.module.Category;
 import dev.prismglass.module.Module;
 import dev.prismglass.setting.*;
 import dev.prismglass.util.ChatUtil;
+import dev.prismglass.util.ColorUtil;
+import dev.prismglass.util.Render3D;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.protocol.game.ClientboundPlayerChatPacket;
+import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
+import net.minecraft.util.Mth;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -69,7 +78,15 @@ import java.util.regex.Pattern;
  *       aren't in the tab list are online but hidden. 4+ such names = it completes players of the whole network,
  *       so then only known staff names count.</li>
  *   <li>Invisible staff bodies near you.</li>
+ *   <li>ChatCheck: a player chat message (it carries the sender's UUID) from someone connected but not listed.</li>
+ *   <li>DespawnCheck: a staff member's body disappears well inside entity tracking range while they stay connected.</li>
+ *   <li>VanishTags: "[V]" / "vanished" in a tab name, team prefix or team name.</li>
  * </ul>
+ * The probe rotates through every ProbeCommand and skips ones that keep answering with no names.
+ *
+ * <p>AutoLog: chosen alert kinds (LogOn) disconnect you, switch every module off (Panic), or both.
+ * Visuals: a glass HUD panel of staff online / hidden / watching, a red screen-edge pulse and banner while you're
+ * watched, staff ESP with their look line, and fading beacons where someone vanished or a ghost was heard.
  * DonutStaff adds DonutSMP's staff accounts to the staff list; RankMarkers catches star-marked ranks.
  */
 public class StaffWatcher extends Module {
@@ -96,10 +113,30 @@ public class StaffWatcher extends Module {
     public final BoolSetting antiVanish = bool("AntiVanish", true, "Catch players going into / out of vanish.");
     public final BoolSetting leaveCheck = bool("LeaveCheck", true, "Tab-list leave/join without a chat message = vanish/unvanish.").visibleWhen(antiVanish::get);
     public final BoolSetting probe = bool("Probe", true, "Ask the server to tab-complete ProbeCommand and look for names missing from the tab list.").visibleWhen(antiVanish::get);
-    public final TextSetting probeCommand = text("ProbeCommand", "minecraft:msg ", "Command whose completion lists players (no slash). The minecraft: prefix skips plugin /msg commands that hide vanished players.").visibleWhen(() -> antiVanish.get() && probe.get());
+    public final TextSetting probeCommand = text("ProbeCommand", "minecraft:msg,minecraft:tell,minecraft:w", "Commands whose completion lists players (no slash, comma separated, asked in turn). The minecraft: prefix skips plugin /msg commands that hide vanished players.").visibleWhen(() -> antiVanish.get() && probe.get());
     public final BoolSetting ghostSense = bool("GhostSense", true, "Sounds/block breaks from a spot nobody visible could have caused (chests, doors, blocks): 2 close together = someone hidden is there.").visibleWhen(antiVanish::get);
     public final NumberSetting ghostRange = num("GhostRange", 32, 8, 64, 1, "How far away GhostSense listens.").visibleWhen(() -> antiVanish.get() && ghostSense.get());
     public final NumberSetting probeInterval = num("ProbeInterval", 10, 2, 120, 1, "Seconds between probes.").visibleWhen(() -> antiVanish.get() && probe.get());
+    public final BoolSetting chatCheck = bool("ChatCheck", true, "Someone chatting who isn't in the tab list is online but hidden.").visibleWhen(antiVanish::get);
+    public final BoolSetting despawnCheck = bool("DespawnCheck", true, "A staff member's body disappearing close to you while they stay connected = vanished (or teleported).").visibleWhen(antiVanish::get);
+    public final NumberSetting despawnRange = num("DespawnRange", 32, 8, 64, 1, "Bodies disappearing closer than this count (players are tracked from 48+ blocks, further is just out of range).").visibleWhen(() -> antiVanish.get() && despawnCheck.get());
+    public final BoolSetting vanishTags = bool("VanishTags", true, "A vanish marker in a tab name, team prefix or team name ([V], vanished) counts as vanished staff.").visibleWhen(antiVanish::get);
+    public final BoolSetting ignoreNpcs = bool("IgnoreNPCs", true, "Ignore fake players (ZNPCs, Citizens, mannequins): a body never backed by a real connection, Citizens' version-2 UUIDs, and NPCNames.");
+    public final TextSetting npcNames = text("NPCNames", "", "Extra NPC names to always ignore, comma separated (a leading/trailing * is a wildcard).").visibleWhen(ignoreNpcs::get);
+
+    public final ModeSetting autoLog = mode("AutoLog", "Off", "When a LogOn alert fires: leave the server, switch every module off, or both.", "Off", "Disconnect", "Panic", "Both");
+    public final ListSetting logOn = choices("LogOn", "Watching,Spectator,Vanish", "Alerts that trigger AutoLog.", false, 0,
+        "Watching", "Spectator", "Vanish", "Ghost", "Invisible", "Near", "Joined").visibleWhen(() -> !autoLog.is("Off"));
+    public final BoolSetting logListedOnly = bool("LogListedOnly", false, "Only names on your Staff list (or DonutStaff) trigger AutoLog.").visibleWhen(() -> !autoLog.is("Off"));
+    public final BoolSetting logOnce = bool("LogOnce", true, "Set AutoLog back to Off after it fired, so rejoining doesn't log you straight out again.").visibleWhen(() -> !autoLog.is("Off"));
+
+    public final BoolSetting hud = bool("Hud", true, "Glass panel: staff online, hidden ones, who is watching (drag it in the HUD editor).");
+    public final BoolSetting watchedOverlay = bool("WatchedOverlay", true, "Red pulse round the screen edges and a banner while staff look at you.");
+    public final BoolSetting staffEsp = bool("StaffESP", true, "Box and look line on loaded staff (red while they look at you).");
+    public final BoolSetting markers = bool("Markers", true, "Fading beacons where someone vanished, went spectator or a ghost was heard.");
+    public final NumberSetting markerTime = num("MarkerTime", 90, 10, 600, 5, "Seconds a marker stays.").visibleWhen(markers::get);
+    public final ColorSetting staffColor = color("StaffColor", 0xFFFFB020, "Staff ESP colour.");
+    public final ColorSetting vanishColor = color("VanishColor", 0xFFB46CFF, "Vanish / ghost marker colour.");
 
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_]{1,16}");
     public static final int PROBE_ID = 0x5747A1;     // our own suggestion request id, so the chat box never sees the answers
@@ -113,7 +150,10 @@ public class StaffWatcher extends Module {
         "ZEEF69", "showered", "CaptainMoose35", "BobIsFound", "NoahvdAa", "0GSummer", "LzouzMP5", "Pastagamer08", "u_vv",
         "Owen1212055", "Splaterd", "Fallerfly", "Bloodspulse");
 
-    private record Seen(UUID id, String name, Vec3 pos, long time) {}
+    private record Seen(UUID id, String name, Vec3 pos, long time, boolean dying) {}
+    private record Marker(Vec3 pos, String label, int color, long time) {}
+    private record ChatSender(UUID id, long time) {}
+    private static final Pattern VANISH_TAG = Pattern.compile("(?i)\\bvanish(ed)?\\b|\\[v]|\\(v\\)");
     private record TabChange(UUID id, String name, GameProfile profile, Vec3 pos, long time) {}
     private record ChatLine(String text, long time) {}
 
@@ -121,12 +161,22 @@ public class StaffWatcher extends Module {
     private final Map<UUID, GameType> modes = new HashMap<>();
     private final Map<UUID, PlayerInfo> tab = new HashMap<>();             // listed tab entries last tick
     private final Map<UUID, PlayerInfo> connected = new HashMap<>();       // every player info, listed or not
+    private final Set<UUID> everConnected = new HashSet<>();               // uuids that were a real connected player this session (not NPCs)
     private final Map<UUID, String> staffWhy = new HashMap<>();     // staff online right now -> reason
     private final Map<UUID, Integer> lookTicks = new HashMap<>();
     private final Set<UUID> near = new HashSet<>();
     private final Set<UUID> wasSpectator = new HashSet<>();
     private final Set<String> vanishers = new HashSet<>();          // lower-case names caught vanishing (= staff)
     private final Map<String, String> hidden = new HashMap<>();     // lower-case -> real name, online but hidden (probe)
+    private final Map<String, Map<String, String>> hiddenBy = new HashMap<>(); // probe command -> its last hidden names
+    private final Map<String, Integer> probeMisses = new HashMap<>(); // probe command -> answers in a row with no names
+    private final Queue<ChatSender> incomingSenders = new ConcurrentLinkedQueue<>();
+    private final Queue<Integer> incomingRemoved = new ConcurrentLinkedQueue<>();
+    private final Map<Integer, UUID> entityIds = new HashMap<>();   // loaded player entity id -> uuid
+    private final Deque<Marker> markerList = new ArrayDeque<>();
+    private String probeSent;
+    private int probeIndex;
+    private boolean logged;
     private final Map<String, Long> lastPop = new HashMap<>();
     private final List<String> pendingJoin = new ArrayList<>();
     private final List<TabChange> leaves = new ArrayList<>(), joins = new ArrayList<>();
@@ -167,12 +217,16 @@ public class StaffWatcher extends Module {
         lastProbe = 0;
         listedSince.clear();
         incomingGhosts.clear(); ghosts.clear(); explosions.clear();
+        hiddenBy.clear(); probeMisses.clear(); incomingSenders.clear(); incomingRemoved.clear(); entityIds.clear(); everConnected.clear();
+        markerList.clear();
+        probeSent = null;
+        logged = false;
     }
 
     /** New shard/server behind the same connection: the tab list is rebuilt, so start the comparisons over. */
     private void rebase() {
         seen.clear(); modes.clear(); tab.clear(); connected.clear(); lookTicks.clear(); near.clear(); pendingJoin.clear();
-        leaves.clear(); joins.clear(); listedSince.clear();
+        leaves.clear(); joins.clear(); listedSince.clear(); entityIds.clear(); incomingRemoved.clear();
         joinTicks = 0;
     }
 
@@ -207,7 +261,19 @@ public class StaffWatcher extends Module {
             if (wasSpectator.contains(id)) return "spectator";
         }
         if (vanishers.contains(name.toLowerCase(Locale.ROOT))) return "vanish";
+        if (antiVanish.get() && vanishTags.get() && vanishTagged(info)) return "vanish tag";
         return null;
+    }
+
+    /** "[V]", "vanished" in the tab name, the team prefix/suffix or the team's own name. */
+    private static boolean vanishTagged(PlayerInfo info) {
+        StringBuilder t = new StringBuilder();
+        if (info.getTabListDisplayName() != null) t.append(plain(info.getTabListDisplayName().getString())).append(' ');
+        if (info.getTeam() != null) {
+            t.append(plain(info.getTeam().getPlayerPrefix().getString())).append(' ')
+             .append(plain(info.getTeam().getPlayerSuffix().getString())).append(' ').append(info.getTeam().getName());
+        }
+        return VANISH_TAG.matcher(t).find();
     }
 
     /** First staff word in the tab-list name (minus the player's own name) or the team prefix/suffix. */
@@ -251,6 +317,10 @@ public class StaffWatcher extends Module {
             incomingGhosts.add(new Ghost(net.minecraft.world.phys.Vec3.atCenterOf(p.getPos()), "block broken", p.getData(), System.currentTimeMillis()));
         } else if (e.packet instanceof ClientboundExplodePacket p) {
             incomingGhosts.add(new Ghost(p.center(), "explosion", -1, System.currentTimeMillis()));
+        } else if (e.packet instanceof ClientboundPlayerChatPacket p) {
+            incomingSenders.add(new ChatSender(p.sender(), System.currentTimeMillis()));
+        } else if (e.packet instanceof ClientboundRemoveEntitiesPacket p) {
+            for (int id : p.entityIds()) incomingRemoved.add(id);
         } else if (e.packet instanceof ClientboundCommandSuggestionsPacket p && p.id() == PROBE_ID) {
             probeAnswers.add(p.suggestions().stream().map(ClientboundCommandSuggestionsPacket.Entry::text).toList());
             e.cancel();
@@ -287,8 +357,14 @@ public class StaffWatcher extends Module {
         for (ChatLine c; (c = incomingChat.poll()) != null; ) chat.addLast(c);
         while (!chat.isEmpty() && now - chat.peekFirst().time() > 10_000) chat.removeFirst();
 
+        // bodies removed since last tick, judged by where they were (seen still holds last tick's positions)
+        List<Integer> removed = new ArrayList<>();
+        for (Integer id; (id = incomingRemoved.poll()) != null; ) removed.add(id);
         for (Player p : mc.level.players())
-            if (p != mc.player) seen.put(p.getUUID(), new Seen(p.getUUID(), p.getGameProfile().name(), p.position(), now));
+            if (p != mc.player) {
+                seen.put(p.getUUID(), new Seen(p.getUUID(), p.getGameProfile().name(), p.position(), now, p.isDeadOrDying()));
+                entityIds.put(p.getId(), p.getUUID());
+            }
 
         scanTab(conn, now);
         if (antiVanish.get()) {
@@ -296,9 +372,59 @@ public class StaffWatcher extends Module {
             else incomingGhosts.clear();
             if (leaveCheck.get()) checkTabChanges(now);
             if (probe.get()) runProbe(conn, now);
-        }
+            if (chatCheck.get()) checkChatSenders(conn);
+            else incomingSenders.clear();
+            if (despawnCheck.get()) checkDespawns(conn, removed, now);
+        } else incomingSenders.clear();
+        for (int id : removed) entityIds.remove(id);
         scanPlayers(conn, now);
+        while (!markerList.isEmpty() && now - markerList.peekFirst().time() > markerTime.get() * 1000) markerList.removeFirst();
     }
+
+    /** ChatCheck: signed chat names its sender; connected but unlisted = hidden from TAB while talking. */
+    private void checkChatSenders(ClientPacketListener conn) {
+        for (ChatSender c; (c = incomingSenders.poll()) != null; ) {
+            if (c.id().equals(mc.player.getUUID()) || tab.containsKey(c.id())) continue;
+            PlayerInfo info = conn.getPlayerInfo(c.id());
+            if (info == null) continue; // the game itself refuses chat from unknown players
+            String name = info.getProfile().name();
+            vanishers.add(name.toLowerCase(Locale.ROOT));
+            alert("Vanish", name, "vanish", ResolvableProfile.createResolved(info.getProfile()), "is chatting while hidden from the tab list", Double.MAX_VALUE);
+        }
+    }
+
+    /**
+     * DespawnCheck: a staff body removed well inside tracking range while its owner stays connected, alive and not in
+     * spectator (that one has its own alert) went invisible to us: vanish, or a teleport (/tp, /home).
+     */
+    private void checkDespawns(ClientPacketListener conn, List<Integer> removed, long now) {
+        for (int eid : removed) {
+            UUID id = entityIds.get(eid);
+            if (id == null) continue;
+            Seen s = seen.get(id);
+            if (s == null || s.dying() || now - s.time() > 1500) continue;
+            if (isNpc(id, s.name())) continue;
+            PlayerInfo info = conn.getPlayerInfo(id);
+            if (info == null || info.getGameMode() == GameType.SPECTATOR || mc.level.getPlayerByUUID(id) != null) continue;
+            double d = s.pos().distanceTo(mc.player.position());
+            if (d > despawnRange.get()) continue;
+            String why = staffWhy.get(id);
+            if (why == null && onList(s.name())) why = "staff list";
+            if (why == null) continue;
+            addMarker(s.pos(), s.name() + " vanished", vanishColor.color());
+            alert("Vanish", s.name(), why, ResolvableProfile.createResolved(info.getProfile()), "disappeared right next to you (vanish or teleport)", d);
+        }
+    }
+
+    private void addMarker(Vec3 pos, String label, int color) {
+        if (pos == null) return;
+        markerList.removeIf(m -> m.pos().distanceTo(pos) < 1.5 && m.label().equals(label));
+        markerList.addLast(new Marker(pos, label, color, System.currentTimeMillis()));
+        while (markerList.size() > 64) markerList.removeFirst();
+    }
+
+    /** Markers placed so far (dev test). */
+    public int markerCount() { return markerList.size(); }
 
     /** Tab list: who is staff, joins/leaves, spectator switches. */
     private void scanTab(ClientPacketListener conn, long now) {
@@ -335,6 +461,7 @@ public class StaffWatcher extends Module {
         tab.putAll(listed);
         connected.clear();
         connected.putAll(current);
+        everConnected.addAll(current.keySet());
 
         List<String> joined = new ArrayList<>();
         Map<UUID, String> nowStaff = new HashMap<>();
@@ -353,10 +480,12 @@ public class StaffWatcher extends Module {
                 // their entity disappears now; if it was right next to us, they're most likely watching us
                 Seen s = seen.get(id);
                 double d = s == null || now - s.time() > 3000 ? Double.MAX_VALUE : s.pos().distanceTo(mc.player.position());
-                if (d <= range.get()) alert(name, why, ResolvableProfile.createResolved(info.getProfile()), "went into spectator next to you", d);
+                if (s != null && now - s.time() <= 3000) addMarker(s.pos(), name + " went spectator", vanishColor.color());
+                if (d <= range.get()) alert("Spectator", name, why, ResolvableProfile.createResolved(info.getProfile()), "went into spectator next to you", d);
                 else if (onlineAlert.get() && joinTicks > 40) ChatUtil.info("§f" + name + "§7 switched to spectator");
             }
         }
+        Set<UUID> staffBefore = new HashSet<>(staffWhy.keySet());
         staffWhy.clear();
         staffWhy.putAll(nowStaff);
         modes.keySet().retainAll(current.keySet());
@@ -366,9 +495,28 @@ public class StaffWatcher extends Module {
             pendingJoin.addAll(joined);
             if (joinTicks == 40 && !pendingJoin.isEmpty() && onlineAlert.get())
                 ChatUtil.info("Staff online: §f" + String.join(", ", pendingJoin));
-        } else if (!joined.isEmpty() && onlineAlert.get()) {
-            ChatUtil.info("Staff joined: §f" + String.join(", ", joined));
+        } else if (!joined.isEmpty()) {
+            if (onlineAlert.get()) ChatUtil.info("Staff joined: §f" + String.join(", ", joined));
+            for (UUID id : nowStaff.keySet())
+                if (!staffBefore.contains(id)) autoLogFire("Joined", current.get(id).getProfile().name(), "joined");
         }
+    }
+
+    /** A fake player (ZNPC / Citizens / mannequin), not a real account: never flagged as staff or a vanish. */
+    private boolean isNpc(UUID id, String name) {
+        if (!ignoreNpcs.get()) return false;
+        if (onList(name)) return false; // a name you vouched for is never treated as an NPC
+        if (id.version() == 2) return true; // Citizens NPCs use version-2 UUIDs
+        for (String n : npcNames.get().split(",")) {
+            String t = n.trim();
+            if (t.isEmpty()) continue;
+            String low = name.toLowerCase(Locale.ROOT), pat = t.toLowerCase(Locale.ROOT);
+            if (pat.startsWith("*") && low.endsWith(pat.substring(1))) return true;
+            if (pat.endsWith("*") && low.startsWith(pat.substring(0, pat.length() - 1))) return true;
+            if (low.equals(pat)) return true;
+        }
+        // a body in the world whose uuid was never a real connected player is a fake entity, not a hidden staffer
+        return !everConnected.contains(id) && !connected.containsKey(id);
     }
 
     private boolean chatMentions(String name, long time) {
@@ -393,12 +541,13 @@ public class StaffWatcher extends Module {
             Player body = mc.level.getPlayerByUUID(l.id());
             String what;
             if (stillConnected) what = "is hidden from the tab list but still connected (vanished)";
-            else if (body != null) { what = "left the tab list but is still here (vanished)"; d = body.distanceTo(mc.player); }
+            else if (body != null && !isNpc(l.id(), l.name())) { what = "left the tab list but is still here (vanished)"; d = body.distanceTo(mc.player); }
             else if (close) what = "vanished next to you";
             else if (serverShowsLeaves) what = "vanished (no leave message)";
             else continue; // no leave messages on this server and nothing else to go on: can't tell
             vanishers.add(l.name().toLowerCase(Locale.ROOT));
-            alert(l.name(), "vanish", ResolvableProfile.createResolved(l.profile()), what, d);
+            addMarker(body != null ? body.position() : l.pos(), l.name() + " vanished", vanishColor.color());
+            alert("Vanish", l.name(), "vanish", ResolvableProfile.createResolved(l.profile()), what, d);
         }
         for (Iterator<TabChange> it = joins.iterator(); it.hasNext(); ) {
             TabChange j = it.next();
@@ -420,29 +569,51 @@ public class StaffWatcher extends Module {
     private void runProbe(ClientPacketListener conn, long now) {
         for (List<String> answer; (answer = probeAnswers.poll()) != null; ) {
             probeReplies++;
+            String cmd = probeSent == null ? "" : probeSent;
             Set<String> visible = new HashSet<>();
             for (PlayerInfo i : conn.getListedOnlinePlayers()) visible.add(i.getProfile().name().toLowerCase(Locale.ROOT));
             Map<String, String> nowHidden = new HashMap<>();
+            int names = 0;
             for (String s : answer) {
                 if (!NAME.matcher(s).matches()) continue; // @a, @p, coordinates...
+                names++;
                 String low = s.toLowerCase(Locale.ROOT);
                 if (!visible.contains(low)) nowHidden.put(low, s);
             }
+            // a command that never completes names is blocked or isn't a player command: stop asking it
+            if (names == 0) probeMisses.merge(cmd, 1, Integer::sum); else probeMisses.remove(cmd);
             // Many hidden names = the command completes players on other servers of the network (proxy), not
             // vanish: then only names known to be staff count.
             if (nowHidden.size() >= MASS_CHANGE) nowHidden.values().removeIf(n -> !onList(n));
             for (var e : nowHidden.entrySet()) {
                 vanishers.add(e.getKey());
                 if (!hidden.containsKey(e.getKey()))
-                    alert(e.getValue(), "vanish", ResolvableProfile.createUnresolved(e.getValue()), "is online but vanished", Double.MAX_VALUE);
+                    alert("Vanish", e.getValue(), "vanish", ResolvableProfile.createUnresolved(e.getValue()), "is online but vanished", Double.MAX_VALUE);
             }
+            // hidden = what every probe command last said (a plugin's command may hide what minecraft:msg shows)
+            hiddenBy.put(cmd, nowHidden);
             hidden.clear();
-            hidden.putAll(nowHidden);
+            for (Map<String, String> h : hiddenBy.values()) hidden.putAll(h);
+            hidden.keySet().removeAll(visible);
         }
         if (joinTicks > 100 && now - lastProbe >= probeInterval.get() * 1000) {
             lastProbe = now;
-            conn.send(new ServerboundCommandSuggestionPacket(PROBE_ID, "/" + probeCommand.get()));
+            probeSent = nextProbe();
+            if (probeSent != null) conn.send(new ServerboundCommandSuggestionPacket(PROBE_ID, "/" + probeSent + " "));
         }
+    }
+
+    /** Next ProbeCommand in turn, skipping ones that answered 3 times in a row without a single name. */
+    private String nextProbe() {
+        List<String> cmds = new ArrayList<>();
+        for (String c : probeCommand.get().split(",")) if (!c.isBlank()) cmds.add(c.trim().replaceFirst("^/", ""));
+        if (cmds.isEmpty()) return null;
+        for (int i = 0; i < cmds.size(); i++) {
+            String c = cmds.get((probeIndex + i) % cmds.size());
+            if (probeMisses.getOrDefault(c, 0) < 3) { probeIndex = (probeIndex + i + 1) % cmds.size(); return c; }
+        }
+        probeMisses.clear(); // all look dead: start over (permissions change, a staff member logs in...)
+        return cmds.get(0);
     }
 
     /**
@@ -468,8 +639,9 @@ public class StaffWatcher extends Module {
             }
             String suspect = hiddenSuspect();
             String text = "is hidden near you (" + partner.what() + ", " + g.what() + ", " + compass(g.pos()) + ")";
-            if (suspect != null) alertKeyed("ghost:" + suspect, suspect, "ghost", ResolvableProfile.createUnresolved(suspect), text, d);
-            else alertKeyed("ghost", "Someone", "ghost", null, text, d);
+            addMarker(g.pos(), "ghost: " + g.what(), vanishColor.color());
+            if (suspect != null) alertKeyed("Ghost", "ghost:" + suspect, suspect, "ghost", ResolvableProfile.createUnresolved(suspect), text, d);
+            else alertKeyed("Ghost", "ghost", "Someone", "ghost", null, text, d);
         }
         while (!ghosts.isEmpty() && now - ghosts.peekFirst().time() > 20_000) ghosts.removeFirst();
         while (!explosions.isEmpty() && now - explosions.peekFirst().time() > 3000) explosions.removeFirst();
@@ -520,24 +692,26 @@ public class StaffWatcher extends Module {
             if (p == mc.player) continue;
             UUID id = p.getUUID();
             String name = p.getGameProfile().name();
+            if (isNpc(id, name)) { lookTicks.remove(id); near.remove(id); continue; }
             String why = staffWhy.get(id);
             if (why == null && conn.getPlayerInfo(id) == null && onList(name)) why = "staff list"; // not in the tab list, but named
             if (why == null) { lookTicks.remove(id); near.remove(id); continue; }
             double d = p.distanceTo(mc.player);
 
             if (antiVanish.get() && p.isInvisible() && d <= range.get())
-                alert(name, why, ResolvableProfile.createResolved(p.getGameProfile()), "is invisible near you", d);
+                alert("Invisible", name, why, ResolvableProfile.createResolved(p.getGameProfile()), "is invisible near you", d);
 
             if (d <= range.get() && looksAtMe(p, d)) {
                 watched = true;
                 int t = lookTicks.merge(id, 1, Integer::sum);
-                if (t == needTicks) alert(name, why, ResolvableProfile.createResolved(p.getGameProfile()), "is looking at you", d);
+                if (t == needTicks) alert("Watching", name, why, ResolvableProfile.createResolved(p.getGameProfile()), "is looking at you", d);
             } else lookTicks.remove(id);
 
             if (nearAlert.get()) {
                 if (!near.contains(id) && d <= nearRange.get()) {
                     near.add(id);
                     ChatUtil.info("§f" + name + " §7(" + why + ") is near you §f" + Math.round(d) + "m");
+                    autoLogFire("Near", name, "is near you");
                 } else if (near.contains(id) && d > nearRange.get() + 4) near.remove(id);
             }
         }
@@ -556,12 +730,13 @@ public class StaffWatcher extends Module {
     }
 
     /** Chat + head pop + sound, once per Cooldown per person. */
-    private void alert(String name, String why, ResolvableProfile head, String what, double d) {
-        alertKeyed(name, name, why, head, what, d);
+    private void alert(String kind, String name, String why, ResolvableProfile head, String what, double d) {
+        alertKeyed(kind, name, name, why, head, what, d);
     }
 
-    private void alertKeyed(String cooldownKey, String name, String why, ResolvableProfile head, String what, double d) {
+    private void alertKeyed(String kind, String cooldownKey, String name, String why, ResolvableProfile head, String what, double d) {
         long now = System.currentTimeMillis();
+        autoLogFire(kind, name, what); // before the cooldown: a repeat while AutoLog is armed still counts
         String key = cooldownKey.toLowerCase(Locale.ROOT);
         Long last = lastPop.get(key);
         if (last != null && now - last < cooldown.get() * 1000) return;
@@ -584,6 +759,138 @@ public class StaffWatcher extends Module {
             mc.level.playLocalSound(at.x, at.y, at.z, SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.MASTER, 1f, 1.6f, false);
         else if (sound.is("Totem"))
             mc.level.playLocalSound(at.x, at.y, at.z, SoundEvents.TOTEM_USE, SoundSource.MASTER, 1f, 1f, false);
+    }
+
+    /** AutoLog: this alert kind is in LogOn -> disconnect and/or panic, once per connection. */
+    private void autoLogFire(String kind, String name, String what) {
+        if (autoLog.is("Off") || logged || !logOn.items().contains(kind)) return;
+        if (logListedOnly.get() && (name == null || !onList(name))) return;
+        logged = true;
+        logFired++;
+        String reason = name + " " + plain(what);
+        boolean panic = autoLog.is("Panic") || autoLog.is("Both"), leave = autoLog.is("Disconnect") || autoLog.is("Both");
+        if (logOnce.get()) autoLog.parse("Off");
+        if (panic) {
+            KeyActions.panic(this);
+            ChatUtil.error("StaffWatcher AutoLog: panic, " + reason);
+        }
+        if (leave && mc.getConnection() != null && !dryRunLog) {
+            AutoReconnect.blockOnce();
+            mc.getConnection().getConnection().disconnect(Component.literal("[Prism StaffWatcher] " + reason));
+        }
+    }
+
+    /** AutoLog fires so far, and a dev switch that skips the real disconnect (tests). */
+    public int logFired;
+    public boolean dryRunLog;
+
+    // ---- visuals ---------------------------------------------------------------------------------
+
+    private boolean isStaff(Player p) {
+        return staffWhy.containsKey(p.getUUID()) || onList(p.getGameProfile().name());
+    }
+
+    @Override
+    public void onRender3D(PoseStack matrices, float delta) {
+        if (staffEsp.get()) {
+            for (Player p : mc.level.players()) {
+                if (p == mc.player || !isStaff(p)) continue;
+                boolean looking = lookTicks.containsKey(p.getUUID());
+                int c = looking ? 0xFFFF3B3B : staffColor.color();
+                Render3D.box(Render3D.lerpBox(p, delta), ColorUtil.withAlpha(c, looking ? 46 : 26), ColorUtil.withAlpha(c, 230), true);
+                Vec3 eye = p.getEyePosition(delta);
+                Vec3 end = looking ? mc.player.getBoundingBox().getCenter() : eye.add(p.getViewVector(delta).scale(3.5));
+                Render3D.line(eye, end, ColorUtil.withAlpha(c, looking ? 220 : 130));
+            }
+        }
+        if (markers.get()) {
+            long now = System.currentTimeMillis();
+            float pulse = 0.75f + 0.25f * Mth.sin(now / 220f);
+            for (Marker m : markerList) {
+                float life = 1 - (now - m.time()) / (float) (markerTime.get() * 1000);
+                if (life <= 0) continue;
+                int a = (int) (255 * Math.min(1, life * 3) * pulse);
+                Vec3 p = m.pos();
+                Render3D.box(new AABB(p.x - 0.12, p.y, p.z - 0.12, p.x + 0.12, p.y + 28, p.z + 0.12),
+                    ColorUtil.withAlpha(m.color(), a * 70 / 255), ColorUtil.withAlpha(m.color(), a * 150 / 255), true);
+                double r = 0.4 + 0.5 * ((now - m.time()) % 1600) / 1600.0; // ripple on the ground
+                Render3D.box(new AABB(p.x - r, p.y, p.z - r, p.x + r, p.y + 0.03, p.z + r),
+                    ColorUtil.withAlpha(m.color(), a * 40 / 255), ColorUtil.withAlpha(m.color(), (int) (a * (1.1 - r))), true);
+            }
+        }
+    }
+
+    @Override
+    public void onRender2D(GuiGraphicsExtractor ctx, float delta) {
+        if (mc.gui.hud.isHidden() && !Hud.editing) return;
+        long now = System.currentTimeMillis();
+        if (markers.get()) {
+            for (Marker m : markerList) {
+                float life = 1 - (now - m.time()) / (float) (markerTime.get() * 1000);
+                if (life <= 0 || m.pos().distanceTo(mc.player.position()) > 160) continue;
+                double[] s = Render3D.project(m.pos().add(0, 2.3, 0));
+                if (s == null) continue;
+                String text = m.label() + " §7" + (now - m.time()) / 1000 + "s";
+                ctx.text(mc.font, text, (int) s[0] - mc.font.width(text) / 2, (int) s[1], ColorUtil.withAlpha(m.color(), (int) (255 * Math.min(1, life * 3))), true);
+            }
+        }
+        if (watchedOverlay.get() && watched) drawWatched(ctx, now);
+        if (hud.get()) drawHud(ctx);
+    }
+
+    /** Red edge pulse + "WATCHED by" banner. */
+    private void drawWatched(GuiGraphicsExtractor ctx, long now) {
+        int sw = ctx.guiWidth(), sh = ctx.guiHeight();
+        float pulse = 0.55f + 0.45f * Mth.sin(now / 170f);
+        int a = (int) (110 * pulse), rgb = 0xFF2B3B;
+        for (int i = 0; i < 14; i++) {
+            int c = ColorUtil.withAlpha(rgb, a * (14 - i) / 14 / 2);
+            ctx.fill(i * 2, 0, i * 2 + 2, sh, c);
+            ctx.fill(sw - i * 2 - 2, 0, sw - i * 2, sh, c);
+        }
+        ctx.fillGradient(0, 0, sw, 28, ColorUtil.withAlpha(rgb, a), ColorUtil.withAlpha(rgb, 0));
+        ctx.fillGradient(0, sh - 28, sw, sh, ColorUtil.withAlpha(rgb, 0), ColorUtil.withAlpha(rgb, a));
+        List<String> who = new ArrayList<>();
+        for (Player p : mc.level.players()) if (lookTicks.containsKey(p.getUUID())) who.add(p.getGameProfile().name());
+        String text = "§c◉ §fWATCHED §7by §f" + (who.isEmpty() ? "staff" : String.join(", ", who));
+        int w = mc.font.width(text) + 16;
+        Glass.pill(ctx, sw / 2f - w / 2f, 34, w, 14, ColorUtil.withAlpha(0x2A0A10, 200), ColorUtil.withAlpha(0x150508, 200), 0.6f);
+        ctx.text(mc.font, text, sw / 2 - w / 2 + 8, 37, 0xFFFFFFFF, true);
+    }
+
+    /** Glass panel: staff online with status (watching, hidden, spectator, distance), plus probe-only hidden names. */
+    private void drawHud(GuiGraphicsExtractor ctx) {
+        List<String> lines = new ArrayList<>();
+        for (var e : staffWhy.entrySet()) {
+            PlayerInfo info = connected.get(e.getKey());
+            if (info == null) continue;
+            StringBuilder l = new StringBuilder();
+            l.append(lookTicks.containsKey(e.getKey()) ? "§c◉ " : tab.containsKey(e.getKey()) ? "§a● " : "§d◌ ");
+            l.append("§6").append(info.getProfile().name());
+            if (!tab.containsKey(e.getKey())) l.append(" §d[V]");
+            if (info.getGameMode() == GameType.SPECTATOR) l.append(" §8[spec]");
+            Player body = mc.level.getPlayerByUUID(e.getKey());
+            if (body != null) l.append(" §7").append(Math.round(body.distanceTo(mc.player))).append("m");
+            l.append(" §8").append(e.getValue());
+            lines.add(l.toString());
+        }
+        Set<String> shown = new HashSet<>();
+        for (UUID id : staffWhy.keySet()) if (connected.get(id) != null) shown.add(connected.get(id).getProfile().name().toLowerCase(Locale.ROOT));
+        for (var h : hidden.entrySet()) if (!shown.contains(h.getKey())) lines.add("§d◌ §6" + h.getValue() + " §d[V] §8probe");
+        if (lines.isEmpty() && !Hud.editing) return;
+        Collections.sort(lines);
+        lines.add(0, "§fStaff §7" + lines.size() + (watched ? " §c◉ watched" : ""));
+        float w = 0;
+        for (String l : lines) w = Math.max(w, mc.font.width(l));
+        w += 12;
+        float h = lines.size() * 10 + 6;
+        int sw = ctx.guiWidth(), sh = ctx.guiHeight();
+        Hud hudModule = Prism.modules().get(Hud.class);
+        float[] p = hudModule != null && hudModule.isEnabled() ? hudModule.place("Staff", w, h, sw - w - 4, 60, sw, sh) : new float[]{sw - w - 4, 60};
+        Glass.panel(ctx, p[0], p[1], w, h, Prism.modules().get(ClickGui.class).panelStyle());
+        if (watched) ctx.fill((int) p[0] + 1, (int) p[1] + 2, (int) p[0] + 3, (int) (p[1] + h - 2),
+            ColorUtil.withAlpha(0xFF2B3B, (int) (160 + 90 * Mth.sin(System.currentTimeMillis() / 170f))));
+        for (int k = 0; k < lines.size(); k++) ctx.text(mc.font, lines.get(k), (int) p[0] + 6, (int) p[1] + 4 + k * 10, 0xFFFFFFFF, true);
     }
 
     // ---- .staff command --------------------------------------------------------------------------

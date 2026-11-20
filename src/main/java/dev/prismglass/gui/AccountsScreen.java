@@ -57,6 +57,7 @@ public class AccountsScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+        dev.prismglass.util.TextInput.sync(this, inputFocused); // SDL3: chars only arrive while on
         dev.prismglass.streamproof.Overlay.markGui();
         rects.clear();
         actions.clear();

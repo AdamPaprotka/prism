@@ -79,6 +79,9 @@ public final class Render3D {
         return Overlay.OUTPUT.getRenderTarget();
     }
 
+    /** Dev: the world projection of the last frame. */
+    public static Matrix4f lastProjection() { return PROJ; }
+
     public static void begin(LevelRenderContext ctx) {
         pose = ctx.poseStack().last();
         var camera = ctx.levelState().cameraRenderState;

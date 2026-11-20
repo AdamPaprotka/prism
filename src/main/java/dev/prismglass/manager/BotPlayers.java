@@ -18,14 +18,27 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
+import com.mojang.authlib.GameProfile;
+import java.time.Duration;
+import java.util.HashMap;
+import net.minecraft.client.gui.screens.GenericMessageScreen;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.CommonListenerCookie;
+import net.minecraft.client.multiplayer.LevelLoadTracker;
 import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.server.ServerLinks;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.multiplayer.resolver.ServerNameResolver;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.Direction;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.Connection;
 import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.PacketListener;
+import net.minecraft.network.HashedStack;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.LastSeenMessages;
@@ -50,6 +63,16 @@ import net.minecraft.network.protocol.configuration.ServerboundSelectKnownPacks;
 import net.minecraft.network.protocol.cookie.ClientboundCookieRequestPacket;
 import net.minecraft.network.protocol.cookie.ServerboundCookieResponsePacket;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
+import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
+import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHealthPacket;
@@ -57,6 +80,9 @@ import net.minecraft.network.protocol.game.ClientboundStartConfigurationPacket;
 import net.minecraft.network.protocol.game.GameProtocols;
 import net.minecraft.network.protocol.game.ServerboundAcceptTeleportationPacket;
 import net.minecraft.network.protocol.game.ServerboundChatCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
@@ -77,7 +103,10 @@ import net.minecraft.server.network.EventLoopGroupHolder;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.PositionMoveRotation;
 import net.minecraft.world.entity.player.ChatVisiblity;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 
 /**
  * Real second players (.joinplayer / .leaveplayer / .sayplayer): each bot is its own connection to the server you
@@ -149,6 +178,62 @@ public final class BotPlayers {
     }
 
     /**
+     * Make bots walk after a player. {@code target} is "all" or a bot name; {@code player} is who to follow.
+     * @return an error for chat, or null.
+     */
+    public String follow(String target, String player) {
+        List<Bot> targets = pick(target);
+        if (targets == null) return "No bot named " + target;
+        if (targets.isEmpty()) return "No bots online";
+        int on = 0;
+        for (Bot bot : targets) if (bot.inGame()) { bot.follow(player); on++; }
+        return on == 0 ? "No bot is in the game yet" : null;
+    }
+
+    /** Stop bots following. */
+    public String stopFollow(String target) {
+        List<Bot> targets = pick(target);
+        if (targets == null) return "No bot named " + target;
+        for (Bot bot : targets) bot.follow(null);
+        return null;
+    }
+
+    /**
+     * Drop items from bots. {@code slot}: a hotbar number 1-9, or "all" (everything in the main inventory and hotbar).
+     * {@code qty}: a number, or "max" for the whole stack.
+     */
+    public String drop(String target, String slot, String qty) {
+        List<Bot> targets = pick(target);
+        if (targets == null) return "No bot named " + target;
+        if (targets.isEmpty()) return "No bots online";
+        boolean all = slot.equalsIgnoreCase("all");
+        int hotbar = -1;
+        if (!all) {
+            try { hotbar = Integer.parseInt(slot.trim()); } catch (NumberFormatException e) { return "Slot is 1-9 or \"all\""; }
+            if (hotbar < 1 || hotbar > 9) return "Slot is 1-9 or \"all\"";
+        }
+        int count = qty.equalsIgnoreCase("max") ? Integer.MAX_VALUE : -1;
+        if (count == -1) { try { count = Integer.parseInt(qty.trim()); } catch (NumberFormatException e) { return "Quantity is a number or \"max\""; } }
+        int done = 0;
+        for (Bot bot : targets) if (bot.inGame()) { if (all) bot.dropAll(); else bot.dropHotbar(hotbar - 1, count); done++; }
+        return done == 0 ? "No bot is in the game yet" : null;
+    }
+
+    /** Lines of a bot's inventory for chat, or an error string wrapped in a one-element list. */
+    public List<String> inventory(String botName) {
+        Bot b = get(botName);
+        if (b == null) return List.of("No bot named " + botName);
+        if (!b.inGame()) return List.of(botName + " is not in the game yet");
+        return b.inventoryLines();
+    }
+
+    private List<Bot> pick(String target) {
+        if (target.equalsIgnoreCase("all")) return new ArrayList<>(bots.values());
+        Bot b = get(target);
+        return b == null ? null : List.of(b);
+    }
+
+    /**
      * Become one of your bots. With {@code swap} your current connection is handed to a bot first, in place: the
      * socket stays open, a bot listener takes over keep-alives, and the server never sees your old account leave.
      * Then the target bot disconnects, your session switches to its cracked account and the client reconnects as it
@@ -175,6 +260,63 @@ public final class BotPlayers {
                 ServerAddress.parseString(sd.ip), sd, false, null);
         });
         return null;
+    }
+
+    /**
+     * Seamless switch: adopt the bot's live connection and rebuild the world from its packet log, so there is no
+     * relog and the server sees no new join (no AuthMe spawn teleport / re-login). EXPERIMENTAL and unverified:
+     * on any failure it logs the cause and falls back to the normal relog switch, so you are never left stuck.
+     */
+    public String fastSwitch(String botName, boolean swap) {
+        var cpl = mc.getConnection();
+        if (cpl == null || mc.player == null || mc.isLocalServer() || mc.getCurrentServer() == null) return "Join a server first";
+        Bot b = get(botName);
+        if (b == null) return "No bot named " + botName;
+        if (!b.inGame()) return botName + " is not in the game yet";
+        if (!b.worldReady()) return botName + " has not recorded a world yet (give it a moment after it joins)";
+        try {
+            ServerData sd = mc.getCurrentServer();
+            RegistryAccess.Frozen registries = cpl.registryAccess();
+            Connection botConn = b.conn;
+            if (botConn == null || !botConn.isConnected()) return botName + "'s connection dropped";
+            // 1) keep your old account online as a bot (swap), or let it leave.
+            if (swap) { String err = detachSelf(sd); if (err != null) return err; }
+            // 2) take the bot out of the bots list and stop Prism treating its connection as a bot's.
+            bots.remove(b.name);
+            BOT_CONNECTIONS.remove(botConn);
+            // 3) tear the current world down (nulls player/level/gameMode), then build a real play listener on the
+            //    bot's connection and replay the log into it on the main thread.
+            mc.execute(() -> {
+                try {
+                    mc.clearClientLevel(new GenericMessageScreen(Component.literal("Switching...")));
+                    GameProfile profile = new GameProfile(FakePlayers.offlineUuid(b.name), b.name);
+                    CommonListenerCookie cookie = new CommonListenerCookie(new LevelLoadTracker(), profile,
+                        mc.getTelemetryManager().createWorldSessionManager(true, null, null, UUID.randomUUID()),
+                        registries, cpl.enabledFeatures(), cpl.serverBrand(), sd, null, new HashMap<>(), null,
+                        new HashMap<>(), ServerLinks.EMPTY, new HashMap<>(), false);
+                    ClientPacketListener listener = new ClientPacketListener(mc, botConn, cookie);
+                    botConn.setupInboundProtocol(GameProtocols.CLIENTBOUND_TEMPLATE.bind(RegistryFriendlyByteBuf.decorator(registries)), listener);
+                    botConn.packetListener = listener;
+                    botConn.disconnectListener = listener;
+                    for (Packet<? super net.minecraft.network.protocol.game.ClientGamePacketListener> p : b.world.replayOrder()) {
+                        try { p.handle(listener); } catch (Exception e) { Prism.LOG.warn("fastSwitch: replay of {} failed", p.getClass().getSimpleName(), e); }
+                    }
+                    ChatUtil.good("Switched to §f" + b.name + "§7 (seamless, no relog)");
+                } catch (Throwable t) {
+                    Prism.LOG.error("fastSwitch replay failed, falling back to relog", t);
+                    ChatUtil.error("Seamless switch failed (" + t.getClass().getSimpleName() + "), relogging instead – see the log");
+                    BOT_CONNECTIONS.remove(botConn);
+                    if (botConn.isConnected()) botConn.disconnect(Component.literal("fastSwitch fallback"));
+                    if (!Prism.accounts().login(b.name)) return;
+                    net.minecraft.client.gui.screens.ConnectScreen.startConnecting(new net.minecraft.client.gui.screens.TitleScreen(), mc,
+                        ServerAddress.parseString(sd.ip), sd, false, null);
+                }
+            });
+            return null;
+        } catch (Throwable t) {
+            Prism.LOG.error("fastSwitch setup failed, using normal switch", t);
+            return switchTo(botName, swap);
+        }
     }
 
     /**
@@ -232,6 +374,16 @@ public final class BotPlayers {
         private volatile boolean hasPos;
         private int ticks;
         private volatile long diedAt;
+        // state the bot decodes so it can be shown / followed / dropped from (everything else is still discarded)
+        private final ItemStack[] inv = new ItemStack[46];        // container slots of window 0 (9-35 main, 36-44 hotbar, 45 offhand, 5-8 armor)
+        private volatile int stateId, selected;
+        private volatile boolean invReady;
+        private final Map<Integer, double[]> entityPos = new ConcurrentHashMap<>();   // entity id -> {x,y,z}, players only
+        private final Map<Integer, UUID> entityUuid = new ConcurrentHashMap<>();
+        private final Map<UUID, String> tabNames = new ConcurrentHashMap<>();         // uuid -> name (from the tab list)
+        private volatile String followName;
+        /** Records the play stream so a fast switch can rebuild this bot's world without a relog. */
+        final BotWorldLog world = new BotWorldLog();
         /** .joinplayer name true: this bot rides its own Tor circuit. */
         volatile boolean ownCircuit;
         private String circuitTag;
@@ -246,6 +398,8 @@ public final class BotPlayers {
         }
 
         public boolean inGame() { return inPlay && !gone; }
+        public boolean worldReady() { return world.ready(); }
+        public int logSize() { return world.size(); }
         public boolean ownCircuit() { return ownCircuit; }
 
         /** Take over a connection that is already in the game (the client's own, see detachSelf). */
@@ -257,6 +411,57 @@ public final class BotPlayers {
             hasPos = true;
         }
         public String state() { return gone ? "gone" : inPlay ? "in game" : phase.name().toLowerCase(); }
+
+        void follow(String player) { followName = player == null || player.isBlank() ? null : player; }
+        public String following() { return followName; }
+
+        /** Drops the whole stack (or count) from hotbar index 0-8: select it, then the vanilla drop action. */
+        void dropHotbar(int index, int count) {
+            Connection c = conn;
+            if (c == null || index < 0 || index > 8) return;
+            if (selected != index) { c.send(new ServerboundSetCarriedItemPacket(index)); selected = index; }
+            if (count == Integer.MAX_VALUE) c.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS, BlockPos.ZERO, Direction.DOWN));
+            else for (int i = 0; i < count && i < 64; i++) c.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.DROP_ITEM, BlockPos.ZERO, Direction.DOWN));
+        }
+
+        /** Drops everything in the main inventory and hotbar: hotbar via the drop action, the rest via throw-clicks. */
+        void dropAll() {
+            Connection c = conn;
+            if (c == null) return;
+            for (int h = 0; h < 9; h++) { int cs = 36 + h; if (inv[cs] != null && !inv[cs].isEmpty()) dropHotbar(h, Integer.MAX_VALUE); }
+            for (int cs = 9; cs <= 35; cs++) if (inv[cs] != null && !inv[cs].isEmpty()) throwSlot(cs);
+        }
+
+        /** A throw-click (whole stack) on a window-0 slot, for inventory slots that aren't on the hotbar. */
+        private void throwSlot(int containerSlot) {
+            Connection c = conn;
+            if (c == null) return;
+            c.send(new ServerboundContainerClickPacket(0, stateId, (short) containerSlot, (byte) 1, ContainerInput.THROW,
+                Int2ObjectMaps.emptyMap(), HashedStack.EMPTY));
+        }
+
+        /** Chat lines of what the bot is holding (hotbar, armour, offhand, then the rest). */
+        List<String> inventoryLines() {
+            if (!invReady) return List.of(name + ": inventory not received yet");
+            List<String> out = new ArrayList<>();
+            StringBuilder hot = new StringBuilder("§7Hotbar: ");
+            for (int h = 0; h < 9; h++) hot.append(h == selected ? "§e[" : "§f").append(itemLabel(inv[36 + h])).append(h == selected ? "§e] " : " ");
+            out.add(hot.toString());
+            String[] armour = {armourLabel(5, "helm"), armourLabel(6, "chest"), armourLabel(7, "legs"), armourLabel(8, "boots"), armourLabel(45, "off")};
+            out.add("§7Armour/off: §f" + String.join(" ", armour));
+            List<String> main = new ArrayList<>();
+            for (int cs = 9; cs <= 35; cs++) if (inv[cs] != null && !inv[cs].isEmpty()) main.add(itemLabel(inv[cs]));
+            out.add("§7Inventory (" + main.size() + "): §f" + (main.isEmpty() ? "empty" : String.join(", ", main)));
+            return out;
+        }
+
+        private String armourLabel(int cs, String tag) { ItemStack s = inv[cs]; return tag + "=" + (s == null || s.isEmpty() ? "-" : itemLabel(s)); }
+
+        private static String itemLabel(ItemStack s) {
+            if (s == null || s.isEmpty()) return "-";
+            String path = BuiltInRegistries.ITEM.getKey(s.getItem()).getPath();
+            return path + (s.getCount() > 1 ? "x" + s.getCount() : "");
+        }
 
         /** Worker thread: resolve, open the socket, start the handshake. */
         void connect() {
@@ -313,6 +518,31 @@ public final class BotPlayers {
             return true;
         }
 
+        /** Walks one tick toward the followed player if the bot can see them. Returns true if it moved. */
+        private boolean stepTowardFollow(String player) {
+            double[] tp = targetPos(player);
+            if (tp == null) return false;
+            double dx = tp[0] - x, dz = tp[2] - z;
+            double d = Math.sqrt(dx * dx + dz * dz);
+            if (d <= 2.0) return false; // close enough
+            double step = Math.min(0.215, d - 2.0); // ~4.3 blocks/s, vanilla walk
+            x += dx / d * step;
+            z += dz / d * step;
+            y = tp[1]; // no world knowledge: ride the target's height, the server corrects us
+            float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+            this.yaw = yaw;
+            return true;
+        }
+
+        /** The followed player's position, by exact name then by closest loaded player, or null if not seen. */
+        private double[] targetPos(String player) {
+            for (var e : tabNames.entrySet())
+                if (e.getValue().equalsIgnoreCase(player)) {
+                    for (var pe : entityUuid.entrySet()) if (pe.getValue().equals(e.getKey())) return entityPos.get(pe.getKey());
+                }
+            return null;
+        }
+
         void tick() {
             Connection c = conn;
             if (c == null) return;
@@ -336,7 +566,10 @@ public final class BotPlayers {
                 t.start();
             }
             ticks++;
-            if (ticks % 20 == 0) c.send(new ServerboundMovePlayerPacket.Pos(x, y, z, true, false));
+            boolean moved = false;
+            String fn = followName;
+            if (fn != null) moved = stepTowardFollow(fn);
+            if (moved || ticks % 20 == 0) c.send(new ServerboundMovePlayerPacket.Pos(x, y, z, true, false));
             c.send(ServerboundClientTickEndPacket.INSTANCE);
             if (diedAt != 0 && System.currentTimeMillis() - diedAt > 1500) {
                 diedAt = 0;
@@ -380,6 +613,7 @@ public final class BotPlayers {
                 default: break;
             }
             if (args != null && args.length == 1 && args[0] instanceof Packet<?> p) {
+                if (phase == ConnectionProtocol.PLAY) try { world.record(p); } catch (Exception ignored) {}
                 try { handle(p); } catch (Exception e) { Prism.LOG.warn("Bot {}: {} failed", name, p.getClass().getSimpleName(), e); }
                 return null;
             }
@@ -438,7 +672,43 @@ public final class BotPlayers {
                 c.send(new ServerboundAcceptTeleportationPacket(pos.id(), x, y, z, yaw, pitch));
             } else if (p instanceof ClientboundSetHealthPacket h) {
                 if (h.getHealth() <= 0 && diedAt == 0) diedAt = System.currentTimeMillis();
+            } else if (p instanceof ClientboundContainerSetContentPacket sc && sc.containerId() == 0) {
+                List<ItemStack> items = sc.items();
+                for (int i = 0; i < inv.length && i < items.size(); i++) inv[i] = items.get(i);
+                stateId = sc.stateId();
+                invReady = true;
+            } else if (p instanceof ClientboundContainerSetSlotPacket ss && ss.getContainerId() == 0) {
+                if (ss.getSlot() >= 0 && ss.getSlot() < inv.length) inv[ss.getSlot()] = ss.getItem();
+                stateId = ss.getStateId();
+                invReady = true;
+            } else if (p instanceof ClientboundSetPlayerInventoryPacket pi) {
+                int cs = invIndexToContainer(pi.slot());
+                if (cs >= 0) { inv[cs] = pi.contents(); invReady = true; }
+            } else if (p instanceof ClientboundSetHeldSlotPacket hs) {
+                if (hs.slot() >= 0 && hs.slot() < 9) selected = hs.slot();
+            } else if (p instanceof ClientboundPlayerInfoUpdatePacket pit) {
+                for (var entry : pit.entries()) if (entry.profile() != null) tabNames.put(entry.profileId(), entry.profile().name());
+            } else if (p instanceof ClientboundAddEntityPacket ae) {
+                entityUuid.put(ae.getId(), ae.getUUID());
+                entityPos.put(ae.getId(), new double[]{ae.getX(), ae.getY(), ae.getZ()});
+            } else if (p instanceof ClientboundTeleportEntityPacket te) {
+                double[] cur = entityPos.get(te.id());
+                if (cur != null) { Vec3 v = te.change().position(); cur[0] = v.x; cur[1] = v.y; cur[2] = v.z; }
+            } else if (p instanceof ClientboundEntityPositionSyncPacket ps) {
+                double[] cur = entityPos.get(ps.id());
+                if (cur != null) { Vec3 v = ps.position().endPosition(); cur[0] = v.x; cur[1] = v.y; cur[2] = v.z; }
+            } else if (p instanceof ClientboundRemoveEntitiesPacket re) {
+                re.entityIds().forEach((int id) -> { entityPos.remove(id); entityUuid.remove(id); });
             }
+        }
+
+        /** Inventory index (0-8 hotbar, 9-35 main, 36-39 armour, 40 offhand) to a window-0 container slot, or -1. */
+        private static int invIndexToContainer(int i) {
+            if (i >= 0 && i <= 8) return 36 + i;      // hotbar
+            if (i >= 9 && i <= 35) return i;          // main
+            if (i >= 36 && i <= 39) return 8 - (i - 36); // armour: boots..helmet -> 8..5
+            if (i == 40) return 45;                   // offhand
+            return -1;
         }
 
         /** Login finished, or the server sent us back to configuration mid-game. */

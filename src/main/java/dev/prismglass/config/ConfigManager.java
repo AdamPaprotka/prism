@@ -99,6 +99,7 @@ public final class ConfigManager {
             write(root.resolve("prism.json"), o);
             saveProfile(active);
             saveServices();
+            if (Prism.macros() != null) Prism.macros().save();
         } catch (Exception e) {
             Prism.LOG.error("Failed to save config", e);
         }
@@ -132,13 +133,20 @@ public final class ConfigManager {
         }
     }
 
+    private static boolean heldByPanik(Module m) {
+        var panik = Prism.modules().get(dev.prismglass.module.client.APanik.class);
+        return panik != null && panik.holding(m);
+    }
+
     public void saveProfile(String name) throws IOException {
         JsonObject o = new JsonObject();
         JsonObject mods = new JsonObject();
         for (Module m : Prism.modules().all()) {
             if (m instanceof Service) continue;
             JsonObject mo = new JsonObject();
-            mo.addProperty("enabled", m.isEnabled());
+            // a module APanik switched off is saved as it was before the panic: leaving or quitting mid-panic
+            // must not turn the panic into your saved setup
+            mo.addProperty("enabled", m.isEnabled() || heldByPanik(m));
             JsonObject so = new JsonObject();
             for (Setting<?> s : m.getSettings()) so.add(s.getName(), s.save());
             mo.add("settings", so);
